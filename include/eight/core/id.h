@@ -18,9 +18,16 @@ private:
 # define eiTYPEDEF_ID( name )							\
 	struct tag_##name {};								\
 	typedef PrimitiveWrap<uint,tag_##name> name;		//
+
+# define eiTYPEDEF_PTR( name )							\
+	struct tag_##name {};								\
+	typedef tag_##name* name;							//
 #else
 # define eiTYPEDEF_ID( name )							\
 	typedef uint name;									//
+
+# define eiTYPEDEF_PTR( name )							\
+	typedef void* name;									//
 #endif
 
 //------------------------------------------------------------------------------

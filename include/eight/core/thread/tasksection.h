@@ -96,11 +96,6 @@ inline void DistributeTask( uint workerIndex, uint numWorkers, T items, T &begin
 	internal::ThreadId* _ei_thread_id = &_ei_thread_id_value;								//
 
 
-struct Nil
-{
-	bool operator==( const Nil& ) { return true; }
-};
-
 class TaskSection;
 
 

@@ -35,9 +35,11 @@ bool eight::InTest()
 	return !!g_InTest;
 }
 
+eiInfoGroup( Test, true );
+
 bool eight::RunUnitTest( const char* name, void(*pfn)(), const char* file, int line, const char* function )
 {
-	Printf( "=====- Testing : %s -=====\n", name );//TODO - prepend thread index to log messages?
+	eiInfo( Test, "=====- Testing : %s -=====\n", name );//TODO - prepend thread index to log messages?
 	EnterTest();
 	if( !RunProtected( pfn ) )
 	{
@@ -45,9 +47,9 @@ bool eight::RunUnitTest( const char* name, void(*pfn)(), const char* file, int l
 	}
 	bool ok = ExitTest();
 	if( ok )
-		Printf( "Test complete : %s\n", name );
+		eiInfo( Test, "Test complete : %s\n", name );
 	else
-		Printf( "Test failed : %s\n", name );
+		eiInfo( Test, "Test failed : %s\n", name );
 	return ok;
 }
 

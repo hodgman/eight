@@ -33,6 +33,11 @@ typedef void (*callback)(void*);
 
 template <typename T, int N> uint ArraySize(T(&)[N]) { return N; } //TODO - move
 
+struct Nil
+{
+	bool operator==( const Nil& ) { return true; }
+};
+
 //------------------------------------------------------------------------------
 } // namespace eight
 //------------------------------------------------------------------------------

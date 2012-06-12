@@ -232,6 +232,8 @@ int test_main( int argc, char** argv )
 	free(scratch);
 	
 	int errorCount = 0;
+	eiRUN_TEST( Bind, errorCount );
+	eiRUN_TEST( Message, errorCount );
 	eiRUN_TEST( FifoSpsc, errorCount );
 	eiRUN_TEST( FifoMpmc, errorCount );
 	eiRUN_TEST( TaskSection, errorCount );
@@ -242,130 +244,15 @@ int test_main( int argc, char** argv )
 
 //------------------------------------------------------------------------------
 
-namespace CUtil
-{
-typedef float F32;
-typedef float Real;
-
-typedef unsigned int DSSizeT;
-typedef unsigned int UInt;
-
-typedef unsigned short DateT;
-typedef unsigned int TimeT;
-
-typedef unsigned long TimeHiResT;
-
-typedef unsigned short WCharT;
-
-typedef size_t MemIndexT;
-
-enum SortOrder {ASC, DESC};
-enum ERBColor {RBC_RED, RBC_BLACK};
-enum HeapType {MINHEAP, MAXHEAP};
-
-enum EListLocation {LP_START, LP_END, LP_INDEX};
-
-typedef void * (FncNewObject)(size_t);
-typedef void (FncDeleteObject)(void *);
-
-struct MemoryStats
-{
-	MemIndexT NumAllocFragments;
-	MemIndexT NumAvailFragments;
-	MemIndexT TotalBytes;
-	MemIndexT UsedBytes;
-};
-#define DEBUG_LISTCHUNKALLOCATOR 0
-
-
-class ListChunkNode
-{
-public:
-	bool IsAlloc;
-#if DEBUG_LISTCHUNKALLOCATOR == 1
-	MemIndexT LinkID;
-#endif
-	ListChunkNode *Prev;
-	ListChunkNode *Next;
-	MemIndexT NumAllocFragments; //Number of Continuous Fragments from this fragment
-
-	ListChunkNode(void *argpdata, ListChunkNode *argPrev, ListChunkNode *argnext, bool argIsAlloc = false, MemIndexT argNumAllocFragments = 0)
-	{
-		IsAlloc = argIsAlloc;
-		Prev = argPrev;
-		Next = argnext;
-		NumAllocFragments = argNumAllocFragments;
-	}
-
-	ListChunkNode()
-	{
-	}
-};
-
-class LinkChunkAllocator
-{
-	ListChunkNode *m_freeStart;
-	ListChunkNode *m_allocStart;
-
-	ListChunkNode *m_dataLinks;
-	char *m_data;
-
-	MemIndexT m_fragmentSize;
-	MemIndexT m_mumFragments;
-
-	MemIndexT m_totalSize;
-
-	MemIndexT m_numAllocFragments;
-
-	inline void cutFragment(ListChunkNode *node, bool isfromFreePool = true);
-	inline void defragmentLinks(ListChunkNode *startNode, ListChunkNode *midNode, ListChunkNode *endNode);
-
-public:
-	LinkChunkAllocator(MemIndexT fragmentSize, MemIndexT mumFragments);
-	virtual ~LinkChunkAllocator();
-
-	MemIndexT getNumLinks()
-	{
-		return m_mumFragments;
-	}
-
-	const ListChunkNode *getDataLinks()
-	{
-		return m_dataLinks;
-	}
-
-	const ListChunkNode *getFreeLinks()
-	{
-		return m_freeStart;
-	}
-
-	const ListChunkNode *getAllocatedLinks()
-	{
-		return m_allocStart;
-	}
-
-	void *newObject(MemIndexT size);
-	void deleteObject(void *ptr);
-
-	void getMemoryStats(MemoryStats &memStats)
-	{
-		memStats.NumAllocFragments = m_numAllocFragments;
-		memStats.NumAvailFragments = m_mumFragments;
-		memStats.UsedBytes = m_numAllocFragments * m_fragmentSize;
-		memStats.TotalBytes = m_mumFragments * m_fragmentSize;
-	}
-};
-}
+eiInfoGroup( AllocProfile, true );
 
 void test2(void* scratch, uint scratchSize)
 {
-	//CUtil::LinkChunkAllocator lca(4, 2621440);
-
 	StackAlloc alloc(scratch, ((u8*)scratch)+scratchSize);
 	Scope a(alloc, "");
 	Timer* timer = eiNew(a, Timer)();
-	(void)/*printf*/("\n\n########Standard List########");
-	for(int itrSample = 0; itrSample < 30; itrSample++)
+	eiInfo(AllocProfile, "########Standard List########");
+	for(int itrSample = 0; itrSample < 3; itrSample++)
 	{
 		double begin = timer->Elapsed();
 		for(int itrItr = 0; itrItr < 10; itrItr++)
@@ -377,7 +264,7 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		eiInfo(AllocProfile, "Sample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 
 	struct ListItem
@@ -386,8 +273,8 @@ void test2(void* scratch, uint scratchSize)
 		ListItem* next;
 	};
 
-	(void)/*printf*/("\n\n########Malloc/Free########");
-	for(int itrSample = 0; itrSample < 30; itrSample++)
+	eiInfo(AllocProfile, "########Malloc/Free########");
+	for(int itrSample = 0; itrSample < 3; itrSample++)
 	{
 		double begin = timer->Elapsed();
 		for(int itrItr = 0; itrItr < 10; itrItr++)
@@ -409,11 +296,11 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		eiInfo(AllocProfile, "Sample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 
-	(void)/*printf*/("\n\n########New/Delete########");
-	for(int itrSample = 0; itrSample < 30; itrSample++)
+	eiInfo(AllocProfile, "########New/Delete########");
+	for(int itrSample = 0; itrSample < 3; itrSample++)
 	{
 		double begin = timer->Elapsed();
 		for(int itrItr = 0; itrItr < 10; itrItr++)
@@ -435,12 +322,12 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		eiInfo(AllocProfile, "Sample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 
-	(void)/*printf*/("\n\n########Pool########");
+	eiInfo(AllocProfile, "########Pool########");
 	ResourcePool<ListItem> pool(a,10000);
-	for(int itrSample = 0; itrSample < 30; itrSample++)
+	for(int itrSample = 0; itrSample < 3; itrSample++)
 	{
 		double begin = timer->Elapsed();
 		for(int itrItr = 0; itrItr < 10; itrItr++)
@@ -462,11 +349,11 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		eiInfo(AllocProfile, "Sample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 	
-	(void)/*printf*/("\n\n########eiNew########");
-	for(int itrSample = 0; itrSample < 30; itrSample++)
+	eiInfo(AllocProfile, "########eiNew########");
+	for(int itrSample = 0; itrSample < 3; itrSample++)
 	{
 		double begin = timer->Elapsed();
 		for(int itrItr = 0; itrItr < 10; itrItr++)
@@ -482,11 +369,11 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		eiInfo(AllocProfile, "Sample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 
-	(void)/*printf*/("\n\n########eiAlloc########");
-	for(int itrSample = 0; itrSample < 30; itrSample++)
+	eiInfo(AllocProfile, "########eiAlloc########");
+	for(int itrSample = 0; itrSample < 3; itrSample++)
 	{
 		double begin = timer->Elapsed();
 		for(int itrItr = 0; itrItr < 10; itrItr++)
@@ -502,7 +389,7 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		eiInfo(AllocProfile, "Sample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 		
 		char* data = (char*)malloc(640*1024);//640KiB should be enough for anybody
 		int& fooVec = *new(data) int;

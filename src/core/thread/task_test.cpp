@@ -331,7 +331,6 @@ static void BasicTest(Scope& a)
 
 eiTEST( TaskSchedule )
 {
-	extern void testBind(); testBind();
 	u32   const stackSize = eiGiB(1);
 	void* const stackMem = malloc( stackSize );
 	for( int i=0; i!=stress; ++i )

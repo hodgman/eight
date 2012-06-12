@@ -26,6 +26,10 @@ variablestream.hpp
 bytestream.h
 bytestream.hpp
 typeinfo.h
+bind.cpp
+bind.h
+message.cpp
+message.h
  )
  
 AddSourceGroup( Alloc 
