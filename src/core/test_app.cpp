@@ -364,20 +364,20 @@ void test2(void* scratch, uint scratchSize)
 	StackAlloc alloc(scratch, ((u8*)scratch)+scratchSize);
 	Scope a(alloc, "");
 	Timer* timer = eiNew(a, Timer)();
-	printf("\n\n########Standard List########");
+	(void)/*printf*/("\n\n########Standard List########");
 	for(int itrSample = 0; itrSample < 30; itrSample++)
 	{
 		double begin = timer->Elapsed();
-		for(int itrItr = 0; itrItr < 100; itrItr++)
+		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			std::list<int> lst;
-			for(int itr = 0; itr < 5000; itr++)
+			for(int itr = 0; itr < 500; itr++)
 			{
 				lst.push_front(itr);
 			}
 		}
 		double end = timer->Elapsed();
-		printf("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 
 	struct ListItem
@@ -386,14 +386,14 @@ void test2(void* scratch, uint scratchSize)
 		ListItem* next;
 	};
 
-	printf("\n\n########Malloc/Free########");
+	(void)/*printf*/("\n\n########Malloc/Free########");
 	for(int itrSample = 0; itrSample < 30; itrSample++)
 	{
 		double begin = timer->Elapsed();
-		for(int itrItr = 0; itrItr < 100; itrItr++)
+		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 5000; itr++)
+			for(int itr = 0; itr < 500; itr++)
 			{
 				ListItem* push = (ListItem*)malloc(sizeof(ListItem));
 				push->next = lst;
@@ -409,17 +409,17 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		printf("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 
-	printf("\n\n########New/Delete########");
+	(void)/*printf*/("\n\n########New/Delete########");
 	for(int itrSample = 0; itrSample < 30; itrSample++)
 	{
 		double begin = timer->Elapsed();
-		for(int itrItr = 0; itrItr < 100; itrItr++)
+		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 5000; itr++)
+			for(int itr = 0; itr < 500; itr++)
 			{
 				ListItem* push = new ListItem;
 				push->next = lst;
@@ -435,18 +435,18 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		printf("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 
-	printf("\n\n########Pool########");
+	(void)/*printf*/("\n\n########Pool########");
 	ResourcePool<ListItem> pool(a,10000);
 	for(int itrSample = 0; itrSample < 30; itrSample++)
 	{
 		double begin = timer->Elapsed();
-		for(int itrItr = 0; itrItr < 100; itrItr++)
+		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 5000; itr++)
+			for(int itr = 0; itr < 500; itr++)
 			{
 				ListItem* push = pool.Alloc();//(ListItem*)lca.newObject(sizeof(ListItem));
 				push->next = lst;
@@ -462,18 +462,18 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		printf("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 	
-	printf("\n\n########eiNew########");
+	(void)/*printf*/("\n\n########eiNew########");
 	for(int itrSample = 0; itrSample < 30; itrSample++)
 	{
 		double begin = timer->Elapsed();
-		for(int itrItr = 0; itrItr < 100; itrItr++)
+		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			Scope t(a,"");
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 5000; itr++)
+			for(int itr = 0; itr < 500; itr++)
 			{
 				ListItem* push = eiNew(t, ListItem);
 				push->next = lst;
@@ -482,18 +482,18 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		printf("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 	}
 
-	printf("\n\n########eiAlloc########");
+	(void)/*printf*/("\n\n########eiAlloc########");
 	for(int itrSample = 0; itrSample < 30; itrSample++)
 	{
 		double begin = timer->Elapsed();
-		for(int itrItr = 0; itrItr < 100; itrItr++)
+		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			Scope t(a,"");
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 5000; itr++)
+			for(int itr = 0; itr < 500; itr++)
 			{
 				ListItem* push = eiAlloc(t, ListItem);
 				push->next = lst;
@@ -502,7 +502,7 @@ void test2(void* scratch, uint scratchSize)
 			}
 		}
 		double end = timer->Elapsed();
-		printf("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
+		(void)/*printf*/("\nSample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 		
 		char* data = (char*)malloc(640*1024);//640KiB should be enough for anybody
 		int& fooVec = *new(data) int;
