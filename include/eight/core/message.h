@@ -4,20 +4,28 @@
 #include <eight/core/blob/types.h>
 #include <eight/core/alloc/stack.h>
 #include <eight/core/macro.h>
+#include "stddef.h"
 namespace eight {
 //------------------------------------------------------------------------------
 
 typedef void (FnTask)( void* o, void* b, uint size );
 
+struct ArgHeader;
+
+struct CallBlob
+{
+	void* arg;
+	void* out;
+};
 struct FutureCall
 {
-	FnTask* task;
+	FnTask* call;
 	void* obj;
-	Offset<u8> args;
-	uint argSize;
-	uint returnIndex;
-	uint returnSize;
-	Offset<FutureCall> next;
+	u16 argSize;
+	u16 returnIndex;
+	u32 returnOffset;
+	Offset<ArgHeader,s16> args;
+	Offset<FutureCall,s16> next;
 };
 
 class CallBuffer
@@ -27,26 +35,12 @@ class CallBuffer
 	FutureCall* m_first;
 	FutureCall* m_last;
 	StackAlloc& a;
-	void Insert(FutureCall* data)
-	{
-		eiASSERT( (!m_first) == (!m_last) );
-		eiASSERT( !data->next );
-		if( !m_first )
-		{
-			m_first = m_last = data;
-		}
-		else
-		{
-			eiASSERT( !m_last->next );
-			m_last->next = data;
-			m_last = data;
-		}
-	}
+	void Insert(FutureCall* data);
 public:
 	CallBuffer( StackAlloc& a ) : m_nextReturnIndex(), m_returnSize(), m_first(), m_last(), a(a) {} 
 	template<class F>
-	FutureCall* Push( void* obj, FnTask* task, uint argSize, F fn );
-	FutureCall* Push( FnTask* task, void* obj, uint argSize, uint returnSize );
+	FutureCall* Push( void* obj, FnTask* call, uint argSize, F fn );
+	FutureCall* Push( FnTask* call, void* obj, uint argSize, uint returnSize );
 	FutureCall* First()             { return m_first; }
 	FutureCall* Last()              { return m_last; }
 	uint        ReturnValuesCount() { return m_nextReturnIndex; }
@@ -89,12 +83,14 @@ template<class T> struct FutureArg
 template<class T> struct ReturnType       { static uint Size() { return sizeof(T); } T value; operator T&() { return value; } void operator=(int i){value = i;}};
 template<>        struct ReturnType<void> { static uint Size() { return 0; } };
 
+const static uint MaxArgs = 3;
+struct ArgHeader { uint futureMask; void (*info)(uint& n, uint o[MaxArgs], uint s[MaxArgs]); };
 template<class R, class A=Nil, class B=Nil, class C=Nil>
-                                    struct ArgStore                { Tuple<FutureArg<A>, FutureArg<B>, FutureArg<C>> t; uint futureMask; ReturnType<R> r; };
-template<class R, class A, class B> struct ArgStore<R,  A,  B,Nil> { Tuple<FutureArg<A>, FutureArg<B>>               t; uint futureMask; ReturnType<R> r; };
-template<class R, class A>          struct ArgStore<R,  A,Nil,Nil> { Tuple<FutureArg<A>>                             t; uint futureMask; ReturnType<R> r; };
-template<class R>                   struct ArgStore<R,Nil,Nil,Nil> { Tuple<>                                         t;                  ReturnType<R> r; };
-
+                                    struct ArgStore                { ArgHeader b; typedef Tuple<FutureArg<A>, FutureArg<B>, FutureArg<C>> Type; Type t; static void Info(uint& n, uint o[MaxArgs], uint s[MaxArgs]) { n = 3; o[0]=offsetof(Type,a); o[1]=offsetof(Type,b); o[2]=offsetof(Type,c); s[0]=sizeof(A); s[1]=sizeof(B); s[2]=sizeof(C); } };
+template<class R, class A, class B> struct ArgStore<R,  A,  B,Nil> { ArgHeader b; typedef Tuple<FutureArg<A>, FutureArg<B>>               Type; Type t; static void Info(uint& n, uint o[MaxArgs], uint s[MaxArgs]) { n = 2; o[0]=offsetof(Type,a); o[1]=offsetof(Type,b);                        s[0]=sizeof(A); s[1]=sizeof(B);                 } };     
+template<class R, class A>          struct ArgStore<R,  A,Nil,Nil> { ArgHeader b; typedef Tuple<FutureArg<A>>                             Type; Type t; static void Info(uint& n, uint o[MaxArgs], uint s[MaxArgs]) { n = 1; o[0]=offsetof(Type,a);                                               s[0]=sizeof(A);                                 } };                 
+template<class R>                   struct ArgStore<R,Nil,Nil,Nil> { ArgHeader b; typedef Tuple<>                                         Type; Type t; static void Info(uint& n, uint o[MaxArgs], uint s[MaxArgs]) { n = 0;                                                                                                                      } };
+						   
 template<class R, class T, class F, class A, class B, class C> void Call(ReturnType<R>& out, const Tuple<A,B,C>& t, T* obj, F fn) { out = ((*obj).*(fn))( t.a, t.b, t.c ); } 
 template<class R, class T, class F, class A, class B>          void Call(ReturnType<R>& out, const Tuple<A,B  >& t, T* obj, F fn) { out = ((*obj).*(fn))( t.a, t.b      ); } 
 template<class R, class T, class F, class A>                   void Call(ReturnType<R>& out, const Tuple<A    >& t, T* obj, F fn) { out = ((*obj).*(fn))( t.a           ); } 
@@ -108,21 +104,21 @@ template<class T, class F>                            void Call(ReturnType<void>
 
 template<class T> struct ArgFromSig;
 template<class R, class T>                            struct ArgFromSig<R(T::*)(void )> { typedef ArgStore<R,Nil,Nil,Nil> Storage; typedef R Return; };
-template<class R, class T, class A>                   struct ArgFromSig<R(T::*)(A    )> { typedef ArgStore<R,  A,Nil,Nil> Storage; typedef R Return; };
-template<class R, class T, class A, class B>          struct ArgFromSig<R(T::*)(A,B  )> { typedef ArgStore<R,  A,  B,Nil> Storage; typedef R Return; };
-template<class R, class T, class A, class B, class C> struct ArgFromSig<R(T::*)(A,B,C)> { typedef ArgStore<R,  A,  B,  C> Storage; typedef R Return; };
+template<class R, class T, class A>                   struct ArgFromSig<R(T::*)(A    )> { typedef ArgStore<R,  A,Nil,Nil> Storage; typedef R Return; typedef A A; };
+template<class R, class T, class A, class B>          struct ArgFromSig<R(T::*)(A,B  )> { typedef ArgStore<R,  A,  B,Nil> Storage; typedef R Return; typedef A A; typedef B B; };
+template<class R, class T, class A, class B, class C> struct ArgFromSig<R(T::*)(A,B,C)> { typedef ArgStore<R,  A,  B,  C> Storage; typedef R Return; typedef A A; typedef B B; typedef C C; };
 
 
 
 template<memfuncptr> struct CallFromMemFunc;
-
+/*
 template<class T>
 struct Future : public FutureIndex
 {
-};
+};*/
 
 template<class T> struct IsFuture              { static const bool value = false; };
-template<class T> struct IsFuture<Future<T>>   { static const bool value = true; };
+//template<class T> struct IsFuture<Future<T>>   { static const bool value = true; };
 template<       > struct IsFuture<FutureIndex> { static const bool value = true; };
 template<class A=Nil, class B=Nil, class C=Nil>
 struct FutureMask
@@ -132,60 +128,77 @@ struct FutureMask
 	                        | (IsFuture<C>::value ? 1<<2 : 0);
 };
 
-
-#define eiPush(q,o,N,...) Push<(memfuncptr)&N>(q, o, &N, __VA_ARGS__)
-
-template<class F>
+template<class F> // see eiPush
 FutureCall* CallBuffer::Push( void* obj, FnTask* task, uint argSize, F fn )
 {
 	return Push( task, obj, argSize, ReturnType<ArgFromSig<F>::Return>::Size() );
 }
 
 template<memfuncptr fn, class F, class T> 
-void Push(CallBuffer& q, T& user, F)
+FutureIndex Push(CallBuffer& q, T& user, F)
 {
-	q.Push( CallFromMemFunc<fn>::value, &user, 0, 0 );
+	typedef ArgFromSig<F> Arg;
+	typedef Arg::Storage Args;
+	typedef ReturnType<Arg::Return> Return;
+	FutureCall* msg = q.Push( CallFromMemFunc<fn>::value, &user, 0, Return::Size() );
+	Args& out = *(Args*)msg->args.Ptr();
+	Args args = { FutureMask<>::value, &Args::Info, {} };
+	out = args;
+	FutureIndex fi = { msg->returnIndex, 0 };
+	return fi;
 }
 template<memfuncptr fn, class F, class T, class A>
-void Push(CallBuffer& q, T& user, F, A a)
+FutureIndex Push(CallBuffer& q, T& user, F, A a)
 {
-	typedef ArgFromSig<F> Info;
-	Info::Storage args = { {FutureArg<A>(a)}, FutureMask<A>::value };
-	FutureCall* msg = q.Push( CallFromMemFunc<fn>::value, &user, sizeof(Info::Storage), ReturnType<Info::Return>::Size() );
-	Info::Storage& out = *(Info::Storage*)msg->args.Ptr();
+	typedef ArgFromSig<F> Arg;
+	typedef Arg::Storage Args;
+	typedef ReturnType<Arg::Return> Return;
+	FutureCall* msg = q.Push( CallFromMemFunc<fn>::value, &user, sizeof(Args), Return::Size() );
+	Args& out = *(Args*)msg->args.Ptr();
+	Args args = { FutureMask<A>::value, &Args::Info, {FutureArg<Arg::A>(a)} };
 	out = args;
+	FutureIndex fi = { msg->returnIndex, 0 };
+	return fi;
 }
 template<memfuncptr fn, class F, class T, class A, class B>
-void Push(CallBuffer& q, T& user, F, A a, B b)
+FutureIndex Push(CallBuffer& q, T& user, F, A a, B b)
 {
-	typedef ArgFromSig<F> Info;
-	Info::Storage args = { {FutureArg<A>(a), FutureArg<B>(b)}, FutureMask<A,B>::value };
-	FutureCall* msg = q.Push( CallFromMemFunc<fn>::value, &user, sizeof(Info::Storage), ReturnType<Info::Return>::Size() );
-	Info::Storage& out = *(Info::Storage*)msg->args.Ptr();
+	typedef ArgFromSig<F> Arg;
+	typedef Arg::Storage Args;
+	typedef ReturnType<Arg::Return> Return;
+	FutureCall* msg = q.Push( CallFromMemFunc<fn>::value, &user, sizeof(Args), Return::Size() );
+	Args& out = *(Args*)msg->args.Ptr();
+	Args args = { FutureMask<A,B>::value, &Args::Info, {FutureArg<Arg::A>(a), FutureArg<Arg::B>(b)} };
 	out = args;
+	FutureIndex fi = { msg->returnIndex, 0 };
+	return fi;
 }
 template<memfuncptr fn, class F, class T, class A, class B, class C>
-void Push(CallBuffer& q, T& user, F, A a, B b, C c)
+FutureIndex Push(CallBuffer& q, T& user, F, A a, B b, C c)
 {
-	typedef ArgFromSig<F> Info;
-	Info::Storage args = { {FutureArg<A>(a), FutureArg<B>(b), FutureArg<C>(c)}, FutureMask<A,B,C>::value };
-	FutureCall* msg = q.Push( CallFromMemFunc<fn>::value, &user, sizeof(Info::Storage), ReturnType<Info::Return>::Size() );
-	Info::Storage& out = *(Info::Storage*)msg->args.Ptr();
+	typedef ArgFromSig<F> Arg;
+	typedef Arg::Storage Args;
+	typedef ReturnType<Arg::Return> Return;
+	FutureCall* msg = q.Push( CallFromMemFunc<fn>::value, &user, sizeof(Args), Return::Size() );
+	Args& out = *(Args*)msg->args.Ptr();
+	Args args = { FutureMask<A,B,C>::value, &Args::Info, {FutureArg<Arg::A>(a), FutureArg<Arg::B>(b), FutureArg<Arg::C>(c)} };
 	out = args;
+	return msg;
 }
 
 
 template<class T, class F>
-void Call(void* user, void* blob, uint size, F fn)
+void Call(F fn, void* user, void* argBlob, void* outBlob)
 {
-	typedef ArgFromSig<F>::Storage TArgs;
-	eiASSERT( sizeof(TArgs) == size ); eiUNUSED(size);
-	TArgs n = {};										
-	TArgs& a = blob ? *((TArgs*)blob) : n;	
+	typedef ArgFromSig<F>::Storage Args;
+	typedef ReturnType<ArgFromSig<F>::Return> Return;
+	Args aDefault = {};
+	Return rDefault;
+	Args& a = argBlob ? *((Args*)argBlob) : aDefault;
+	Return& r = outBlob ? *((Return*)outBlob) : rDefault;
 	eiASSERT( user );
-	Call( a.r, a.t, (T*)user, fn );
+	Call( r, a.t, (T*)user, fn );
 }
-
 
 
 
@@ -193,19 +206,24 @@ void Call(void* user, void* blob, uint size, F fn)
 //------------------------------------------------------------------------------
 struct FetchLuaArg
 {
-	FetchLuaArg(void* luaState) : luaState(luaState) {} void* luaState;
+	FetchLuaArg(void* l, uint* f) : luaState(l), futureMask(f), i() {} void* luaState; uint* futureMask, i;
 	template<class T> void operator()(T& arg)
 	{
 		//arg = LuaFetch<T>(luaState)  /  LuaFetch(luaState, &arg)
+		arg = T();
+		*futureMask |= 0;
+		++i;
 	}
 };
 template<class F> FutureIndex LuaPush(CallBuffer& q, FnTask* call, void* user, void* luaState, F fn)
 {
-	typedef ArgFromSig<F>::Storage TArgs;
-	typedef ArgFromSig<F>::Return TReturn;
-	FutureCall* msg = q.Push( call, user, sizeof(TArgs), ReturnType<TReturn>::Size() );
-	TArgs& a = *(TArgs*)msg->args.Ptr();
-	a.t.ForEach( FetchLuaArg(luaState) );
+	typedef ArgFromSig<F>::Storage Args;
+	typedef ArgFromSig<F>::Return Return;
+	FutureCall* msg = q.Push( call, user, sizeof(Args), ReturnType<Return>::Size() );
+	Args& args = *(Args*)msg->args.Ptr();
+	ArgHeader header = { 0, &Args::Info };
+	args.t.ForEach( FetchLuaArg(luaState, &header.futureMask) );
+	args.b = header;
 	FutureIndex retval = { msg->returnIndex };
 	return retval;
 }
@@ -229,21 +247,25 @@ template<class F> FutureIndex LuaPush(CallBuffer& q, FnTask* call, void* user, v
 #endif
 
 
+#define eiPush(q,o,N,...) Push<(memfuncptr)&N>(q, o, &N, __VA_ARGS__)
 
 #define eiMessage( T, NAME )																					\
 void Call_##T##_##NAME(void* user, void* blob, uint size)														\
 {																												\
-	Call<T>(user, blob, size, &T::NAME);																		\
+	eiASSERT( size == sizeof(CallBlob) );																		\
+	CallBlob& data = *(CallBlob*)blob;																			\
+	Call<T>(&T::NAME, user, data.arg, data.out );																\
 }																												\
 void Push_##T##_##NAME(CallBuffer& q, void* user, void* blob, uint size)										\
 {																												\
-	q.Push( user, &Call_##T##_##NAME, size, &T::NAME );															\
+	FutureCall* msg = q.Push( user, &Call_##T##_##NAME, size, &T::NAME );										\
+	ArgHeader* out = msg->args.Ptr(); eiASSERT(size >= sizeof(ArgHeader) && size <= msg->argSize);				\
+	memcpy( out, blob, size );																					\
 }																												\
 template<> struct CallFromMemFunc<(memfuncptr)&T::NAME> { static FnTask* value; };								\
 FnTask* CallFromMemFunc<(memfuncptr)&T::NAME>::value = &Call_##T##_##NAME;										\
 eiUserMsgEntry( T, NAME )																						\
-template<class N, class t> struct MsgFuncs;																		\
-class Tag##NAME;																								\
+template<class N, class t> struct MsgFuncs; class Tag##NAME;													\
 template<> struct MsgFuncs<Tag##NAME,T> { static void Call(void* user, void* blob, uint size) {					\
 															Call_##T##_##NAME(user, blob, size); }				\
 										  static void Push(CallBuffer& q, void* user, void* blob, uint size) {	\

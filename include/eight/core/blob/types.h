@@ -20,7 +20,7 @@ struct BlobRoot : public VariableSize
 	u32 bytes;
 };
 
-template<class T> struct Offset
+template<class T, class Y=s32> struct Offset
 {
 	const T* Ptr() const { return (T*)(((u8*)&offset) + offset); }
 		  T* Ptr()       { return (T*)(((u8*)&offset) + offset); }
@@ -29,10 +29,10 @@ template<class T> struct Offset
 	const T& operator *() const { return *Ptr(); }
 		  T& operator *()       { return *Ptr(); }
 	uint DataSize() const { return sizeof(T); }
-	bool operator!() const { return !!offset; }
-	Offset& operator=( void* ptr ) { offset = ((u8*)ptr - (u8*)&offset); return *this; }
+	bool operator!() const { return !offset; }
+	Offset& operator=( void* ptr ) { offset = ptr ? ((u8*)ptr - (u8*)&offset) : 0; return *this; }
 //private:
-	s32 offset;
+	Y offset;
 };
 
 template<class T> struct Array

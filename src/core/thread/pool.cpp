@@ -48,7 +48,7 @@ static int PoolThreadMain( void* data, int systemId )
 void eight::StartThreadPool(Scope& a, FnPoolThreadEntry* entry, void* arg, int numWorkers)
 {
 	if( numWorkers < 1 )
-		numWorkers = max(1,NumberOfProcessors()-1);
+		numWorkers = max(1, NumberOfProcessors()/2 + 1);
 //		numWorkers = NumberOfProcessors();  
 //		numWorkers = (NumberOfProcessors()+1)/2; 
 //		numWorkers = 1;
