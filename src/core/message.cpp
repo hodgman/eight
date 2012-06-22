@@ -100,14 +100,14 @@ eiTEST( Message )
 		Push_Test_DoStuff( q, &t, &args, sizeof(args) );
 	}
 	{
-		ArgStore<void, int, const float*> args = { {0, &ArgStore<void, int, const float*>::Info}, {} };
+		ArgStore<void, int, const float*> args = { {0, &ArgStore<void, int, const float*>::Info}, {42, 0} };
 		Push_Test_FooBar( q, &t, &args, sizeof(ArgStore<void, int, const float*>) );
 
 		CallBlob call = { &args, 0 };
 		Call_Test_FooBar( &t, &call, sizeof(CallBlob) );
 	}
 
-	LuaPush_Test_FooBar( q, &t, 0 );
+//	LuaPush_Test_FooBar( q, &t, 0 );
 
 	FutureIndex stuff = eiPush( q, t, Test::DoStuff );
 	eiPush( q, t, Test::FooBar, 41, (float*)0 );
@@ -142,7 +142,7 @@ eiTEST( Message )
 				eiASSERT( idx < numArgs );//future bits should match up with arg indices
 				uint offset = offsets[idx];//look up where this item is inside the tuple
 				uint size   = sizes[idx];//and how many bytes to copy it
-				FutureIndex* future = (FutureIndex*)argTuple[offset];//if the bit was set, assume the item isn't an arg, but a future index
+				FutureIndex* future = (FutureIndex*)&argTuple[offset];//if the bit was set, assume the item isn't an arg, but a future index
 				uint futureIndex = future->index;
 				uint futureOffset = future->offset;
 				eiASSERT( futureIndex < returnCount );
