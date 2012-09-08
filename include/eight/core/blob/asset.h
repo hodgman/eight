@@ -10,7 +10,7 @@ template<class T> struct NativeHash;
 
 class TypeInfo {};//TODO
 
-#define eiASSET_REFRESH
+//#define eiASSET_REFRESH // TODO - needs reimplementation
 
 #define eiASSERT_CAST(Base, Derived) (void)static_cast<Base*>((Derived*)0)
 
@@ -41,6 +41,8 @@ struct AssetRefreshMemory
 
 struct Handle
 {
+	Handle(void*p) : ptr(p) {}
+	Handle(uint i) : id(i) {}
 	union
 	{
 		void* ptr;
@@ -48,18 +50,24 @@ struct Handle
 	};
 	bool operator!() const { return !ptr; }
 	bool operator!=(void* v) const { return ptr != v; }
+	bool operator==(uint  i) const { return id  == i; }
 };
 
-//TODO
-class AssetName { const char* name; public: AssetName(const char* n=0):name(n){} const char* String() const { return name; } bool operator==(const AssetName&o)const{return 0==strcmp(name,o.name);} friend struct NativeHash<AssetName>; };
+struct AssetName
+{
+	u32 hash;
+	AssetName(const char* n=0);
+	bool operator==(const AssetName& o) const { return hash == o.hash; }
+	friend struct NativeHash<AssetName>;
+};
 
 struct Asset : NonCopyable
 {
-public:
-	bool Loaded() const { return !!m_handle; }
+//public:
+//	bool Loaded() const { return !!m_handle; }
 protected:
 	uint Id() const { return m_handle.id; }
-	u8* Data() { eiASSERT(m_handle); return (u8*)m_handle.ptr; }
+	u8* Data() { return (u8*)m_handle.ptr; }
 //	template<class T> T* Data()       { eiASSERT(m_handle); return (T*)m_handle.ptr; }
 	Handle m_handle;
 };
@@ -67,11 +75,12 @@ protected:
 struct AssetStorage : public Asset
 {
 public:
-	void Assign(uint id, u8* data, u32 size);
+	void Assign(Handle);//(uint id, u8* data, u32 size);
+	operator const Handle&() const { return m_handle; }
 	u8* Data() { return Asset::Data(); }
 #if defined(eiASSET_REFRESH)
 	void FreeRefreshData();
-	template<class T> void Refresh( AssetScope& s, AssetName name, BlobLoader& blobs, T& factory, RefreshHeap& a )
+	template<class T> bool Refresh( AssetScope& s, AssetName name, BlobLoader& blobs, T& factory, RefreshHeap& a )
 	{//todo - Take out a lock to prevent two concurrent loads, return it when the load is done.
 	 //     - Allow continuous calling, return whether the loaded asset matches 'name', and try to issue a load command if returning false.
 		eiASSERT( !m_heap || m_heap == &a );
@@ -84,7 +93,7 @@ public:
 		req.userData = ctxData;
 		req.pfnComplete = &T::OnBlobLoaded;
 		req.pfnAllocate = &RefreshHeap::OnAllocate;
-		blobs.Load( name, req );
+		return blobs.Load( name, req );
 	}
 private:
 	friend struct RefreshHeap;
@@ -96,6 +105,6 @@ private:
 };
 
 //------------------------------------------------------------------------------
-template<> struct NativeHash<AssetName> { static u32 Hash(const AssetName& n) { return *(u32*)(&n.name); } typedef u32 type; };
+template<> struct NativeHash<AssetName> { static u32 Hash(const AssetName& n) { return n.hash; } typedef u32 type; };
 }
 //------------------------------------------------------------------------------

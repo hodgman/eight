@@ -60,7 +60,7 @@ struct TaskGroup : public VariableSize
 	static const uint s_frames = 4;//Different threads can be one +/- 1 frame. Need to be able to write +2 frames ahead.
 	SectionBlob             section[s_frames];
 	Address<List<Task>>     tasks;
-	Array<u32>              dependencyFlags;
+	ArrayOffset<u32>        dependencyFlags;
 	List<Offset<TaskGroup>> dependencies;
 };
 

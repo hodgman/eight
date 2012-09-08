@@ -144,20 +144,25 @@ struct InactiveArrayBase
 	}
 };
 
-class InactiveArrayMask : protected InactiveArrayBase
+class InactiveArrayMask// : protected InactiveArrayBase
 {
 public:
 	InactiveArrayMask( Scope& a, uint size )
-		: masks( eiAllocArray(a, u64, NumMasks(size)) )
+		: masks( eiAllocArray(a, u64, InactiveArrayBase::NumMasks(size)) )
 	{
-		memset( masks, 0, sizeof(u64)*NumMasks(size) );
+		memset( masks, 0, sizeof(u64)*InactiveArrayBase::NumMasks(size) );
 	}
 	void Enable ( uint i, uint size )       { InactiveArrayBase::Enable (i, size, masks); }
 	void Disable( uint i, uint size )       { InactiveArrayBase::Disable(i, size, masks); }
 	bool Enabled( uint i, uint size ) const { return InactiveArrayBase::Enabled(i, size, masks); }
 	template<class T, class Fn>
 	void ForEach( Fn& fn, uint size, T* data ) { InactiveArrayBase::ForEach( fn, size, masks, data ); }
-	int Allocate(uint size) { return InactiveArrayBase::Allocate(size, masks); }
+	int Allocate(uint size) 
+	{
+		int free = InactiveArrayBase::Allocate(size, masks);
+		eiASSERT( free < (int)size );
+		return free;
+	}
 private:
 	u64* masks;
 };
@@ -179,7 +184,6 @@ public:
 	T* Allocate()
 	{
 		int free = InactiveArrayMask::Allocate(size);
-		eiASSERT( free < (int)size );
 		return free < 0 ? 0 : &data[free];
 	}
 private:
@@ -187,12 +191,35 @@ private:
 	  T* data;
 };
 
-class BlobLoaderWin32 : public BlobLoader
+class AssetManifestDevWin32
 {
 public:
-	BlobLoaderWin32(Scope&, const BlobConfig&, const TaskLoop&);
+	struct AssetInfo
+	{
+		uint numBlobs;
+		u32* blobSizes;
+		String* fileName;
+	};
+	AssetInfo GetInfo(const AssetName&);
+private:
+	struct AssetInfo_
+	{
+		Array<u32> blobSizes;
+		String& FileName(u8 numBlobs) { return *(String*)(blobSizes.End(numBlobs)); }
+	};
+	List<u32>                 names;
+	Array<u8>&                NumBlobs() { return *(Array<u8>*)names.End(); };
+	Array<Offset<AssetInfo_>>& Info() { return *(Array<Offset<AssetInfo_>>*)NumBlobs().End(names.count); };
+};
+
+class BlobLoaderDevWin32 : public BlobLoader
+{
+public:
+	BlobLoaderDevWin32(Scope&, const BlobConfig&, const TaskLoop&);
+	~BlobLoaderDevWin32();
+	States Prepare();
 	bool EnqueueLoad(const AssetName& name, const Request& req);//call at any time from any thread
-	void Update();//should be called by all threads
+	void Update(uint worker);//should be called by all threads
 
 private:
 	enum Pass
@@ -204,12 +231,15 @@ private:
 	};
 	struct LoadItem
 	{
-		OVERLAPPED overlapped;
+		const static int MAX_BLOBS = 3;
+		OVERLAPPED overlapped[MAX_BLOBS];
 		Request request;
-		void* buffer;
-		DWORD size;
 		HANDLE file;
 		Atomic pass;
+		Atomic numAllocated;
+		int numBuffers;
+		DWORD sizes[MAX_BLOBS];
+		void* buffers[MAX_BLOBS];
 	};
 	struct QueueItem
 	{
@@ -217,20 +247,27 @@ private:
 		Request request;
 	};
 
+	const char* FullPath( char* buf, int bufSize, const char* name, int nameLen );
 	bool StartLoad(QueueItem& name);
-	bool UpdateLoad(LoadItem& item);
+	bool UpdateLoad(LoadItem& item, uint worker);
 	static VOID WINAPI OnComplete(DWORD errorCode, DWORD numberOfBytesTransfered, OVERLAPPED* overlapped);
+	static VOID WINAPI OnManifestComplete(DWORD errorCode, DWORD numberOfBytesTransfered, OVERLAPPED* overlapped);
 
 	const TaskLoop& m_loop;
+	AssetManifestDevWin32* m_manifest;
 	LatentMpsc<QueueItem> m_queue;
 	InactiveArray<LoadItem> m_loads;
 	int m_pendingLoads;
 	const char* m_basePath;
+	int m_baseLength;
 	ThreadGroup* m_osUpdateTask;
+	HANDLE m_manifestFile;
+	OVERLAPPED* m_manifestLoad;
+	uint m_manifestSize;
 	eiDEBUG( Atomic dbg_updating; )
 };
 
 //------------------------------------------------------------------------------
-eiNoDestructor(BlobLoaderWin32::QueueItem);
+eiNoDestructor(BlobLoaderDevWin32::QueueItem);
 }
 //------------------------------------------------------------------------------

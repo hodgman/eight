@@ -1,7 +1,11 @@
 #include <eight/core/sort/radix.h>
 #include <eight/core/debug.h>
+#include <eight/core/alloc/scope.h>
+#include <eight/core/timer/timer.h>
+#include <eight/core/timer/timer_impl.h>
 #include <ctime>
 #include <vector>
+#include <algorithm>
 
 using namespace eight;
 
@@ -11,6 +15,16 @@ enum DataSource
 	Sorted,
 	Reverse,
 };
+
+static Timer* g_t = 0;
+
+int g_x = 1, g_y = 2;
+template<class T>
+bool Pred ( T elem1, T elem2 )
+{
+	return elem1 == elem2 ? (elem1+g_x == elem2+g_x ? elem1*g_y > elem2*g_y : elem1+g_x > elem2+g_x)
+	   : elem1 >= elem2;
+}
 
 template<class T>
 void TestSort( int runs, int count, DataSource data, float& r8, float& r16, float& q )
@@ -61,21 +75,21 @@ void TestSort( int runs, int count, DataSource data, float& r8, float& r16, floa
 	//		ASSERT( a3[i] >= 0 )
 		}
 
-	//	uint64 start;
-	//	start = GetTicks();
+		double start;
+		start = g_t->Elapsed();
 		b.resize( a1.size() );
 		RadixSort( &a1[0], &b[0], a1.size() );
-	//	total1 = (float)DeltaTicks( start, GetTicks() )*1000;
+		total1 = (float)(g_t->Elapsed()-start);
+/*
+		start = g_t->Elapsed();
+		RadixSort16( a2, b );
+		total2 = (float)(g_t->Elapsed()-start);
+*/
+		start = g_t->Elapsed();
+		std::sort( a3.begin(), a3.end(), Pred<T> );
+		total3 = (float)(g_t->Elapsed()-start);
 
-	//	start = GetTicks();
-	//	RadixSort16( a2, b );
-	//	total2 = (float)DeltaTicks( start, GetTicks() )*1000;
-
-	//	start = GetTicks();
-	//	std::sort( a3.begin(), a3.end() );
-	//	total3 = (float)DeltaTicks( start, GetTicks() )*1000;
-
-		T prev1 = 0, prev2 = 0, prev3 = 0;
+	/*	T prev1 = 0, prev2 = 0, prev3 = 0;
 		for( int i=0; i!=count; ++i )
 		{
 			eiRASSERT( prev1 <= a1[i] );
@@ -84,21 +98,24 @@ void TestSort( int runs, int count, DataSource data, float& r8, float& r16, floa
 			prev1 = a1[i];
 			prev2 = a2[i];
 			prev3 = a3[i];
-		}
+		}*/
 	}
-	//r8  = total1 / runs;
-	//r16 = total2 / runs;
-	//q   = total3 / runs;
+	r8  = total1 / runs;
+	r16 = total2 / runs;
+	q   = total3 / runs;
 }
 
-void TODO_test_sort()
+void TODO_test_sort(Scope& temp)
 {
 	//observation, if count is smaller than ~200, quick sort wins
 	//             if count is smaller than ~65k, radix 8 wins
 	//             if count is *massive*, radix16 starts to become feasible
 	float total1=0, total2=0, total3=0;
+
+	Scope a(temp, "temp");
+	g_t = eiNew(a,Timer);
 	
-#if 1
+#if 0
 	int runs = 1;
 	int count = 0xFFF;
 
@@ -111,7 +128,7 @@ void TODO_test_sort()
 
 #else
 	int runs = 100;
-	int count = 0xF;
+	int count = 1000000;//0xF;
 	
 	//printf( "Data, Input, Items, Radix8 ms, Radix16 ms, QuickSort ms\n" );
 	printf( "Algorithm, Items, Input, Time ms\n" );
@@ -130,19 +147,19 @@ void TODO_test_sort()
 		TestSort<int32>( runs, count, Sorted, total1, total2, total3 );
 		printf( "int32, Sorted, %d, %f, %f, %f\n", count, total1, total2, total3 );
 		TestSort<int32>( runs, count, Reverse, total1, total2, total3 );
-		printf( "int32, Reverse, %d, %f, %f, %f\n", count, total1, total2, total3 );*/
-		
+		printf( "int32, Reverse, %d, %f, %f, %f\n", count, total1, total2, total3 );
+		*/
 		TestSort<int32>( runs, count, Random, total1, total2, total3 );
 		printf( "Radix8, %d, Random, %f\n", count, total1 );
-		printf( "Radix16, %d, Random, %f\n", count, total2 );
+	//	printf( "Radix16, %d, Random, %f\n", count, total2 );
 		printf( "QuickSort, %d, Random, %f\n", count, total3 );
 		TestSort<int32>( runs, count, Sorted, total1, total2, total3 );
 		printf( "Radix8, %d, Sorted, %f\n", count, total1 );
-		printf( "Radix16, %d, Sorted, %f\n", count, total2 );
+	//	printf( "Radix16, %d, Sorted, %f\n", count, total2 );
 		printf( "QuickSort, %d, Sorted, %f\n", count, total3 );
 		TestSort<int32>( runs, count, Reverse, total1, total2, total3 );
 		printf( "Radix8, %d, Reverse, %f\n", count, total1 );
-		printf( "Radix16, %d, Reverse, %f\n", count, total2 );
+	//	printf( "Radix16, %d, Reverse, %f\n", count, total2 );
 		printf( "QuickSort, %d, Reverse, %f\n", count, total3 );
 
 		count <<= 4;

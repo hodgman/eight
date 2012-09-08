@@ -144,7 +144,7 @@ eiTEST( Message )
 				uint size   = sizes[idx];//and how many bytes to copy it
 				FutureIndex* future = (FutureIndex*)&argTuple[offset];//if the bit was set, assume the item isn't an arg, but a future index
 				uint futureIndex = future->index;
-				uint futureOffset = future->offset;
+				uint futureOffset = future->offset; eiUNUSED(futureOffset);//TODO
 				eiASSERT( futureIndex < returnCount );
 				eiASSERT( returnOffsets[futureIndex] != 0xFFFFFFFF );
 				u8* returnValue = returnData + returnOffsets[futureIndex];

@@ -28,14 +28,14 @@ template<class T, class Y=s32> struct Offset
 		  T* operator->()       { return Ptr(); }
 	const T& operator *() const { return *Ptr(); }
 		  T& operator *()       { return *Ptr(); }
-	uint DataSize() const { return sizeof(T); }
+	static uint DataSize() { return sizeof(T); }
 	bool operator!() const { return !offset; }
 	Offset& operator=( void* ptr ) { offset = ptr ? ((u8*)ptr - (u8*)&offset) : 0; return *this; }
 //private:
 	Y offset;
 };
 
-template<class T> struct Array
+template<class T> struct ArrayOffset
 {
 	const T* Ptr() const { return (T*)(((u8*)&offset) + offset); }
 		  T* Ptr()       { return (T*)(((u8*)&offset) + offset); }
@@ -44,9 +44,22 @@ template<class T> struct Array
 	const T& operator[](uint i) const { return Ptr()[i]; }
 		  T& operator[](uint i)       { return Ptr()[i]; }
 	uint DataSize(uint count) const { return sizeof(T) * count; }
-	Array& operator=(T* p) { offset = ((u8*)p)-((u8*)this); return *this; }
+	ArrayOffset& operator=(T* p) { offset = ((u8*)p)-((u8*)this); return *this; }
 //private:
 	s32 offset;
+};
+
+template<class T> struct Array
+{
+	const T* Begin() const { return (T*)(&data); }
+		  T* Begin()       { return (T*)(&data); }
+	const T* End  (uint count) const { return Begin()+count; }
+	      T* End  (uint count)       { return Begin()+count; }
+	const T& operator[](uint i) const { return ((T*)&data)[i]; }
+		  T& operator[](uint i)       { return ((T*)&data)[i]; }
+	static uint DataSize(uint count)  { return sizeof(T) * count; }
+//private:
+	u8 data;
 };
 
 template<class T> struct Address
@@ -72,7 +85,7 @@ template<class T> struct List
 	u32 count;
 };
 
-struct String { u8 length; u8 chars; };
+struct String { u8 length; char chars; };
 
 struct StringOffset
 {

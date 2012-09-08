@@ -253,7 +253,7 @@ template<class F> FutureIndex LuaPush(CallBuffer& q, FnTask* call, void* user, v
 void Call_##T##_##NAME(void* user, void* blob, uint size)														\
 {																												\
 	eiASSERT( size == sizeof(CallBlob) );																		\
-	CallBlob& data = *(CallBlob*)blob;																			\
+	CallBlob& data = *reinterpret_cast<CallBlob*>(blob);														\
 	Call<T>(&T::NAME, user, data.arg, data.out );																\
 }																												\
 void Push_##T##_##NAME(CallBuffer& q, void* user, void* blob, uint size)										\

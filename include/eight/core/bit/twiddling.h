@@ -1,6 +1,7 @@
 //------------------------------------------------------------------------------
 #pragma once
 #include <eight/core/types.h>
+#include <eight/core/debug.h>
 namespace eight {
 //------------------------------------------------------------------------------
 
@@ -8,6 +9,12 @@ uint MostSignificantBit( u32 );
 uint MostSignificantBit( u64 );
 uint LeastSignificantBit( u32 );
 uint LeastSignificantBit( u64 );
+
+inline uint BitIndex( u32 value )
+{
+	eiASSERT( LeastSignificantBit( value ) == MostSignificantBit( value ) );
+	return LeastSignificantBit( value );
+}
 
 uint CountBitsSet( u32 i );
 uint CountBitsSet( u64 i );

@@ -46,6 +46,7 @@ struct BusyWait
 struct WaitFor1;
 struct WaitForTrue;
 struct WaitForFalse;
+struct WaitForValue;
 
 void AtomicWrite(u32* out, u32 in);
 

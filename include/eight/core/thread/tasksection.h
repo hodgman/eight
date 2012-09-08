@@ -30,9 +30,10 @@ eiInfoGroup( TaskSection, false );
 #define eiBeginSectionTask(	        section )     eiEnterTaskSection_Impl(section, ,         TaskSectionNoLock, )		///< Begin execution of a block that is scheduled by a TaskSection object
 #define eiBeginSectionThread(   section )     eiEnterTaskSection_Impl(section,Group,    TaskSectionGroupLock, )	///< Begin execution of a block that is scheduled by a ThreadGroup object
 #define eiBeginSectionRedundant( section )    eiEnterTaskSection_Impl(section,Multiple,  TaskSectionNoLock, )		///< Begin execution of a possibly redundant block that is scheduled by a TaskSection object
-#define eiBeginSectionSemaphore( section )    eiEnterTaskSection_Impl(section,Semaphore, TaskSectionLock,			\
+#define eiBeginSectionSemaphore( section )    eiEnterTaskSection_Impl(section,Semaphore, TaskSectionLock,				\
                                                                             eiASSERT(_ei_semaphore_lock==Nil());		\
-																			eiDEBUG(bool _ei_semaphore_lock = true;) )///< Begin execution of a possibly redundant block that is scheduled by a TaskSection object
+																			eiDEBUG(bool _ei_semaphore_lock = true;)	\
+																			eiUNUSED( _ei_semaphore_lock ); )///< 
 
 #define eiEndSection(section)															\
 			eiASSERT( _ei_this_section == &section );										\
@@ -284,6 +285,8 @@ public://todo - refactor - was SingleThread, nee
 	ThreadGroup( const ThreadGroup& );
 
 	bool Current() const;
+
+	uint WorkerIndex() const;
 
 	operator SectionBlob() const { eiSTATIC_ASSERT(sizeof(*this)==sizeof(SectionBlob)); return *reinterpret_cast<const SectionBlob*>(this); }
 

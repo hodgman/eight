@@ -34,7 +34,7 @@ void Printf( const char* msg, ... );
 
 #define eiNop do{}while(0)
 
-#define eiFatalError(x) do{}while(0)//todo
+#define eiFatalError(x) eiRASSERT(false && #x)
 
 //Define the ASSERT and DEBUG keywords
 #if eiDEBUG_LEVEL > 0
@@ -65,13 +65,6 @@ void Printf( const char* msg, ... );
 	#define eiInfo(...) eiNop
 	#define eiInfoGroup(name, enabled)
 #endif
-
-#ifdef eiBUILD_EXCEPTIONS
-#define eiTHROW( a ) throw a
-#else
-#define eiTHROW( a ) do{eiASSERT(false);}while(0)
-#endif
-
 
 //------------------------------------------------------------------------------
 } // namespace eight

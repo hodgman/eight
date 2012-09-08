@@ -43,3 +43,9 @@ struct WaitForFalse
 	WaitForFalse( const Atomic& a ) : a(a) {} const Atomic& a; 
 	bool operator()() const { return !a; }
 };
+
+struct WaitForValue
+{
+	WaitForValue( const Atomic& a, s32 v ) : a(a), value(v) {} const Atomic& a; s32 value;
+	bool operator()() const { return value == (s32)a; }
+};

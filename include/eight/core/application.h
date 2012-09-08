@@ -1,6 +1,7 @@
 //------------------------------------------------------------------------------
 #pragma once
 #include <eight/core/debug.h>
+#include <eight/core/macro.h>
 namespace eight {
 //------------------------------------------------------------------------------
 
@@ -29,7 +30,7 @@ namespace eight {
 		eiBEGIN_CATCH_ALL();					\
 		retVal = fn( argc, argv );				\
 		eiEND_CATCH_ALL(error);					\
-		eiASSERT( !error );						\
+		eiASSERT( !error ); eiUNUSED( error );	\
 		return retVal;							\
 	}											//
 

@@ -2,6 +2,7 @@
 #include <eight/core/math/arithmetic.h>
 #include <eight/core/bit/twiddling.h>
 #include <eight/core/macro.h>
+#include <eight/core/throw.h>
 #include <stdio.h>
 using namespace eight;
 
@@ -201,6 +202,10 @@ bool ThreadGroup::Current() const
 {
 	using namespace internal;
 	return _ei_thread_id->mask == WorkerMask();
+}
+uint ThreadGroup::WorkerIndex() const
+{
+	return BitIndex( WorkerMask() );
 }
 bool TaskSection::Current() const
 {

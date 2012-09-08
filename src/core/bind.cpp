@@ -15,9 +15,11 @@ namespace {
 	class Test1
 	{
 	public:
-		eiBind(Test);
+		eiBind(Test1);
 		int DoStuff() { return 0; }
 		void FooBar(int*, const float*) { }
+	private:
+		int m_stuff;
 	};
 	struct Test2 {};
 }
@@ -27,7 +29,10 @@ eiMessage( Test1, DoStuff );
 eiBindClass( Test1 )
 	eiBeginMethods()
 		eiBindMethod( DoStuff )
-	eiEndMethods();
+	eiEndMethods()
+	eiBeginData()
+		eiBindData( m_stuff )
+	eiEndData()
 eiEndBind();
 
 eiBindStruct( Test2 );
@@ -43,7 +48,7 @@ eiTEST( Bind )
 	StackAlloc s(buf,1024);
 
 	eiASSERT( 0==strcmp(b.method[0].name,"DoStuff") );
-	(t.*((void(Test1::*)(void*))b.method[0].memfuncptr))(0);
+	(t.*((int(Test1::*)(void))b.method[0].memfuncptr))();
 	(void)(b.dataCount + a.dataCount);
 }
 /**//**//**//**//**//**//**//**//**//**//**//**//**//**//**//**//**//**/

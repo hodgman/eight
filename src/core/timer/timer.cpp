@@ -15,19 +15,7 @@ using namespace eight;
 
 static eight::Atomic g_TimerSystemInit;
 
-TimerImpl::TimerImpl()
-{
-	Timer::InitSystem();
-	eiASSERT( g_TimerSystemInit );
-	timer_initialize( &data );
-}
-
-TimerImpl::~TimerImpl()
-{
-	Timer::ShutdownSystem();
-}
-
-void Timer::InitSystem()
+static void InitSystem()
 {
 	if( 0 == g_TimerSystemInit++ )
 		timer_lib_initialize();
@@ -40,11 +28,23 @@ void Timer::InitSystem()
 	//thread A: timer_lib_initialize(); -- too late
 }
 
-void Timer::ShutdownSystem()
+static void ShutdownSystem()
 {
 	eiASSERT( g_TimerSystemInit );
 	if( --g_TimerSystemInit == 0 )
 		timer_lib_shutdown();
+}
+
+TimerImpl::TimerImpl()
+{
+	InitSystem();
+	eiASSERT( g_TimerSystemInit );
+	timer_initialize( &data );
+}
+
+TimerImpl::~TimerImpl()
+{
+	ShutdownSystem();
 }
 
 void Timer::Reset()

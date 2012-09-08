@@ -1,6 +1,7 @@
 #include <eight/core/thread/tasksection.h>
 #include <eight/core/thread/pool.h>
 #include <eight/core/test.h>
+#include <eight/core/alloc/malloc.h>
 #include <eight/core/alloc/scope.h>
 #include <eight/core/alloc/new.h>
 #include <eight/core/macro.h>
@@ -127,7 +128,7 @@ eiTEST( TaskSection )//todo test waiting on a critical section
 {
 	u32 arraySize = s_itemsPerWorker*s_workers*s_tasks;
 	u32 stackSize = eiMiB(1)+sizeof(int)*arraySize;
-	void* stackMem = malloc( stackSize );
+	ScopedMalloc stackMem( stackSize );
 	for( int i=0; i!=1*stress; ++i )
 	{
 		eiInfo(TaskSection, "%d.", i);
@@ -164,5 +165,4 @@ eiTEST( TaskSection )//todo test waiting on a critical section
 			eiRASSERT( found == 2 );
 		}*/
 	}
-	free( stackMem );
 }

@@ -4,11 +4,15 @@
 #include "eight/core/os/win32.h"
 #include "eight/core/thread/fifo_mpmc.h"
 #include "eight/core/thread/atomic.h"
+#include "eight/core/hash.h"
 
 using namespace eight;
 
 //------------------------------------------------------------------------------
 
+AssetName::AssetName(const char* n) : hash(Fnv32a(n)){}
+
+//------------------------------------------------------------------------------
 #ifdef eiASSET_REFRESH
 void AssetStorage::FreeRefreshData()
 {
@@ -18,7 +22,7 @@ void AssetStorage::FreeRefreshData()
 #endif
 
 
-void AssetStorage::Assign(uint id, u8* data, u32 size)
+void AssetStorage::Assign(Handle h)
 {
 #ifdef eiASSET_REFRESH
 //	eiASSERT( (!id && m_handle.ptr != data) || (id && m_handle.id != id) );
@@ -50,18 +54,20 @@ void AssetStorage::Assign(uint id, u8* data, u32 size)
 	}
 #endif
 	eiSTATIC_ASSERT( sizeof(s32) == sizeof(m_handle) );
-	if( id )
+	((Atomic&)m_handle.id) = (s32)h.id;
+/*	if( id )
 		((Atomic&)m_handle.id) = (s32)id;
 	else
-		((Atomic&)m_handle.ptr) = (s32)data;
+		((Atomic&)m_handle.ptr) = (s32)data;*/
 //	eiDEBUG( m_size = size );
 //	AtomicWrite(&m_loaded, 1);
 }
-
-void* RefreshHeap::OnAllocate(uint numBlobs, u32 size[], u8  blobHint[], BlobLoadContext* context)
+/*
+void* RefreshHeap::OnAllocate(uint numBlobs, uint blobIdx, u32 size, BlobLoadContext* context)
 {
 	eiASSERT( numBlobs==1 );
-	eiASSERT( size[0] );
+	eiASSERT( size );
+	eiASSERT( size );
 #ifdef eiASSET_REFRESH
 	AssetStorage* asset = context->asset;
 	eiASSERT( asset->Loaded() );
@@ -80,6 +86,6 @@ void* RefreshHeap::OnAllocate(uint numBlobs, u32 size[], u8  blobHint[], BlobLoa
 void RefreshHeap::OnFree(u8* alloc)
 {
 	_aligned_free(alloc);
-}
+}*/
 
 //------------------------------------------------------------------------------

@@ -64,7 +64,7 @@ void eight::StartThreadPool(Scope& a, FnPoolThreadEntry* entry, void* arg, int n
 		PoolThreadEntryInfo* data = eiAlloc( a, PoolThreadEntryInfo );
 		*data = info;
 		data->threadIndex = i;
-		Thread* p = eiNew( a, Thread ) ( a, &PoolThreadMain, data );
+		eiNew( a, Thread ) ( a, &PoolThreadMain, data );
 	}
 	PoolThreadMain( &info, 0 );
 }

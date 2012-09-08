@@ -12,9 +12,6 @@ eiConstructAs(Timer, TimerImpl);
 class Timer : NonCopyable
 {
 public:
-	static void InitSystem();
-	static void ShutdownSystem();
-
 	void Reset();
 	double Elapsed() const;
 	double Elapsed(bool reset = false);

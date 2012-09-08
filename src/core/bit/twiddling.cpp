@@ -40,8 +40,8 @@ uint eight::MostSignificantBit( u64 value )
 	eiASSERT( anyBits );
 #else
 	unsigned long resultHigh, resultLow;
-	unsigned char anyBitsHigh = _BitScanReverse( &resultHigh, u32(value>>32) );
-	unsigned char anyBitsLow  = _BitScanReverse( &resultLow, u32(value) );
+	unsigned char anyBitsHigh = _BitScanReverse( &resultHigh, u32((value>>32)&0xFFFFFFFF) );
+	unsigned char anyBitsLow  = _BitScanReverse( &resultLow, u32(value&0xFFFFFFFF) );
 	eiASSERT( anyBitsHigh || anyBitsLow );
 	result = anyBitsHigh ? 32 + resultHigh : resultLow;
 #endif

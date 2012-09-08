@@ -1,6 +1,7 @@
 #include <eight/core/types.h>
 #include <eight/core/debug.h>
 #include <eight/core/test.h>
+#include <eight/core/alloc/malloc.h>
 #include <eight/core/alloc/scope.h>
 #include <eight/core/thread/pool.h>
 #include <eight/core/thread/fifo_mpmc.h>
@@ -15,10 +16,22 @@
 #include <eight/core/sort/radix.h>
 #include <iostream>
 #include <vector>
+#include <stdlib.h>
+
+namespace eight { namespace internal { void OnThreadExitCleanup(); } }
+
 using namespace eight;
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
+void* eight::Malloc( uint size )//TODO - make hookable
+{
+	return malloc( size );
+}
+void eight::Free( void* p )
+{
+	free( p );
+}
 
 
 template<bool> struct IndexMeta       { typedef uint32 Type; const static int size = 32; };
@@ -64,7 +77,7 @@ bool eight::Assert( const char* e, int l, const char* f, const char* fn )
 static TimerImpl g_timer;
 struct PrintMsg { const char* msg; double time; };
 static s32 init=0;
-static u8* buf = (u8*)malloc(eiMiB(2));
+static u8* buf = (u8*)Malloc(eiMiB(2));
 static const uint s = sizeof(StackAlloc);
 static StackAlloc t( buf+s, eiMiB(2)-s );
 static Scope g( t, "global print" );
@@ -106,23 +119,23 @@ void eight::Print( const char* msg )
 				//printf(messages[i]->msg);
 				if( messages[i] != &thisPacket )
 				{
-					free((void*)messages[i]->msg);
-					free(messages[i]);
+					Free((void*)messages[i]->msg);
+					Free(messages[i]);
 				}
 			}
 		}
 		else
 		{
 			uint len = strlen(msg)+1;
-			PrintMsg* packet = (PrintMsg*)malloc(sizeof(PrintMsg));
-			packet->msg = (char*)malloc(len);
+			PrintMsg* packet = (PrintMsg*)Malloc(sizeof(PrintMsg));
+			packet->msg = (char*)Malloc(len);
 			packet->time = g_timer.Elapsed();
 			strncpy((char*)packet->msg, msg, len);
 			if( !f.Push( packet ) )
 			{
 				printf(packet->msg);
-				free((void*)packet->msg);
-				free(packet);
+				Free((void*)packet->msg);
+				Free(packet);
 			}
 		}
 	}
@@ -140,14 +153,24 @@ void eight::Printf( const char* fmt, ... )
 
 struct DebugOutput_Tag{};
 struct DebugOutput_Buffer{ char buffer[2048]; };
-ThreadLocalStatic<DebugOutput_Buffer, DebugOutput_Tag> tlsBuffers;
+static ThreadLocalStatic<DebugOutput_Buffer, DebugOutput_Tag> s_tlsBuffers;
+
+void eight::internal::OnThreadExitCleanup()
+{
+	DebugOutput_Buffer* tlBuffer = s_tlsBuffers;
+	if( tlBuffer )
+	{
+		s_tlsBuffers = (DebugOutput_Buffer*)0;
+		delete tlBuffer;//todo - replace new/delete with hookable general allocator
+	}
+}
+
 void eight::DebugOutput( const char* prefix, const char* fmt, ... )
 {
-	//static char buffer[2048];
-	DebugOutput_Buffer* tlBuffer = tlsBuffers;
+	DebugOutput_Buffer* tlBuffer = s_tlsBuffers;
 	if( !tlBuffer )
-		tlsBuffers = tlBuffer = new DebugOutput_Buffer;
-	char* buffer = tlsBuffers->buffer;
+		s_tlsBuffers = tlBuffer = new DebugOutput_Buffer;//todo - replace new/delete with hookable general allocator
+	char* buffer = tlBuffer->buffer;
 	int len = strlen(prefix);
 	memcpy(buffer, prefix, len);
 	va_list	v;
@@ -169,11 +192,10 @@ void eight::DebugOutput( int line, const char* file, const char* function, const
 }
 void eight::DebugOutput( int line, const char* file, const char* function, const char* fmt, va_list& args )
 {
-	//static char buffer[2048];
-	DebugOutput_Buffer* tlBuffer = tlsBuffers;
+	DebugOutput_Buffer* tlBuffer = s_tlsBuffers;
 	if( !tlBuffer )
-		tlsBuffers = tlBuffer = new DebugOutput_Buffer;
-	char* buffer = tlsBuffers->buffer;
+		s_tlsBuffers = tlBuffer = new DebugOutput_Buffer;//todo - replace new/delete with hookable general allocator
+	char* buffer = tlBuffer->buffer;
 	int len = sprintf(buffer, "%s(%d) : %s : ", file, line, function );
 	len += vsprintf(&buffer[len], fmt, args);
 	buffer[len] = '\n';

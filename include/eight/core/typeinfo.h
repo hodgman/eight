@@ -1,5 +1,6 @@
 //------------------------------------------------------------------------------
 #pragma once
+#include <eight/core/alloc/scope.h>
 namespace eight {
 //------------------------------------------------------------------------------
 
@@ -25,12 +26,12 @@ struct TypeName
 		for(end = begin; *end; ++ end);
 		for(; end > begin && *end != '>'; -- end);
 	}
-	static const char* Get()
+	static const char* Get(Scope& a)
 	{
 		const char* begin=0, *end=0;
 		Get_(begin, end);
 		uint length = end-begin;
-		char* buf = (char*)malloc(length+1);
+		char* buf = (char*)a.Alloc(length+1);
 		memcpy(buf, begin, end-begin);
 		buf[length] = 0;
 		return buf;

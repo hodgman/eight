@@ -27,7 +27,7 @@ inline bool StackAlloc::Align( uint align )
 	return false;
 }
 //bool IsClear() const { return cursor == begin; }
-//u8*  Begin() { return begin; }
+inline const u8* StackAlloc::Begin() const { return begin; }
 inline u8* StackAlloc::Alloc( u32 required, u32 reserve )
 {
 	eiASSERT( reserve >= required );

@@ -1,6 +1,6 @@
 #include <eight/core/thread/fifo_mpmc.h>
 #include <eight/core/thread/pool.h>
-#include <eight/core/alloc/stack.h>
+#include <eight/core/alloc/malloc.h>
 #include <eight/core/test.h>
 #include <malloc.h>
 #include <stdio.h>
@@ -65,20 +65,10 @@ int ThreadEntry( void* arg, uint threadIndex, uint numThreads, uint systemId )
 
 }//end namespace
 
-struct MallocScope : NonCopyable
-{
-	MallocScope( uint size ) : buffer( malloc(size) ) {}
-	~MallocScope() { free( buffer ); }
-	operator void*() { return buffer; }
-private:
-	void* buffer;
-};
-
 eiTEST(FifoMpmc)
 {
-	MallocScope buffer( 1024000 );
-	StackAlloc stack( buffer, 1024000 );
-	Scope a( stack, "test1" );
+	MallocStack buffer( 1024000 );
+	Scope a( buffer.stack, "test1" );
 	FifoMpmc<int> queue( a, 100 );
 	for( int i =0; i<1/*0000*/; ++i )
 	{

@@ -4,6 +4,13 @@
 #include <eight/core/alloc/scope.h>
 #include <eight/core/os/win32.h>
 
+namespace eight { namespace internal { void OnThreadExitCleanup(); } }
+
+
+#if eiDEBUG_LEVEL > 0 && !defined(eiPROTECTED_THREADS)
+#define eiPROTECTED_THREADS
+#endif
+
 using namespace eight;
 
 struct ThreadInfo
@@ -27,14 +34,18 @@ static DWORD WINAPI ThreadMain_Internal( void* data )
 	ThreadEntry entry = entryInfo.entry;
 	void* arg = entryInfo.arg;
 	ThreadInfo* info = entryInfo.info;
-	while( !info->runnung ){}//wait until the main thread has filled in the info struct
+	YieldThreadUntil( WaitForTrue(info->runnung) );//wait until the main thread has filled in the info struct
+//	while( !info->runnung ){}//wait until the main thread has filled in the info struct
 	entryInfo.started = true;//signal to main thread that it can destroy the entryInfo struct now
 	int result = entry( arg, (int)info->systemId );
 	info->runnung = false;//signal to main that the thread has finished
+#if !defined(eiPROTECTED_THREADS)
+	internal::OnThreadExitCleanup();
+#endif
 	return (DWORD)result;
 }
 
-#if eiDEBUG_LEVEL > 0
+#if defined(eiPROTECTED_THREADS)
 namespace { struct TestContext
 {
 	DWORD retVal;
@@ -50,6 +61,7 @@ static DWORD WINAPI ThreadMain_Test( void* data )
 	TestContext ctx = { 0, data };
 	bool didntCrash = RunProtected(&ThreadMain_Test_Internal, &ctx);
 	eiASSERT( didntCrash );
+	internal::OnThreadExitCleanup();
 	return ctx.retVal;
 }
 #endif
@@ -64,7 +76,7 @@ Thread::Thread(Scope& a, ThreadEntry entry, void* arg) : pimpl(a.Alloc<ThreadInf
 	entryInfo.info = &info;
 	entryInfo.started = false;
 	info.runnung = false;
-#if eiDEBUG_LEVEL > 0
+#if defined(eiPROTECTED_THREADS)
 	info.handle = CreateThread( 0, 0, &ThreadMain_Test, &entryInfo, 0, &info.systemId );
 #else
 	info.handle = CreateThread( 0, 0, &ThreadMain_Internal, &entryInfo, 0, &info.systemId );

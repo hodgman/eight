@@ -2,10 +2,12 @@
 #include <eight/core/test.h>
 #include <eight/core/alloc/scope.h>
 #include <eight/core/alloc/new.h>
+#include <eight/core/alloc/malloc.h>
 #include <eight/core/macro.h>
 #include <eight/core/thread/timedloop.h>
 #include <eight/core/thread/task.h>
 #include <eight/core/typeinfo.h>
+#include <eight/core/timer/timer_impl.h>
 #include <math.h>
 
 using namespace eight;
@@ -17,8 +19,9 @@ using namespace eight;
 
 
 //-------------------------------------------------------------------
-static const int stress = 3;
-const static int s_scheduleStress = 1000;
+static const int stress = 6;
+const static int s_scheduleStressA = 10;
+const static int s_scheduleStressB = 10;
 // The test process generates a series of fibonacci numbers and performs
 // several transforms on that series.
 //
@@ -140,6 +143,7 @@ static void DivTask(void*, void* blob, uint size)
 
 //-------------------------------------------------------------------
 //-------------------------------------------------------------------
+eiInfoGroup(NumbersTest, false);
 struct NumbersTest_Data
 {
 	Scope* a;
@@ -152,9 +156,10 @@ struct NumbersTest_Data
 	AddTaskParms   add;
 	DivTaskParms   div;
 
+private:
 	void Schedule(Scope& a, int count=1, int x=2, int y=2)
 	{
-		numSchedules = s_scheduleStress;
+		numSchedules = s_scheduleStressA;
 		s = eiAllocArray( a, TaskSchedule, numSchedules );
 		for( uint i=0, end=numSchedules; i!=end; ++i )
 		{
@@ -235,61 +240,54 @@ struct NumbersTest_Data
 			s[i] = MakeSchedule( a, groups, ArraySize(groups) );
 		}
 	}
+	
+	friend class SimLoop;
+	typedef NumbersTest_Data Args;
+	typedef int ThreadData;
+	typedef void FrameData;
+
+	static NumbersTest_Data* Create(Scope& a, Scope& thread, Args& args, const TaskLoop&)
+	{
+		const uint count = s_scheduleStressB;
+		const int x = 2;
+		const int y = 2;
+		args.Schedule(a, count, x, y);
+		return &args;
+	}
+	static ThreadData* InitThread(Scope& a, Args&)
+	{
+		int* frame = eiNew(a, int);
+		*frame = 0;
+		return frame;
+	}
+	FrameData* Prepare(Scope&, Scope&, ThreadData* thread, FrameData*)
+	{
+		int& frame = *thread;
+		eiInfo(NumbersTest, "Prep %d", frame);
+		if( frame == 100 )
+			return 0;
+		return (void*)1;
+	}
+	void Execute(Scope&, Scope& scratch, ThreadData* thread, FrameData* task, uint worker)
+	{
+		eiASSERT( task == (void*)1 );
+
+		int& frame = *thread;
+		eiInfo(NumbersTest, "Work %d", frame);
+		ExecuteSchedules( scratch, frame, s, numSchedules, ThreadGroup() );
+		++frame;
+	}
 };
 //	struct FibTaskParms{ int* fib; int count; };
 //	struct MulTaskParms{ int* mul; const int* fib; int begin; int end; int x; };
 //	struct AddTaskParms{ int* add; const int* fib; int begin; int end; int y; };
 //	struct FinalTaskParms{ int* final; const int* add;  const int* mul; int begin; int end; };
 
-eiInfoGroup(Test, true);
 
-void* NumbersTest_Init(Scope& a, void* user)
-{
-	ThreadGroup init;
-	eiBeginSectionThread(init);
-	{
-		NumbersTest_Data& args = *(NumbersTest_Data*)user;
-
-		const uint count = 42;
-		const int x = 2;
-		const int y = 2;
-		args.Schedule(a, count, x, y);
-	}
-	eiEndSection(init);
-
-	int* frame = eiNew(a, int);
-	*frame = 0;
-	return frame;
-}
-void* NumbersTest_Prepare(Scope& a, Scope& scratch, void* user, void* thread)
-{
-	int& frame = *(int*)thread;
-	//eiInfo(Test, "Prep %d", frame);
-	return (void*)1;
-}
-void NumbersTest_Worker(Scope& a, Scope& scratch, void* user, void* thread, void* task)
-{
-	NumbersTest_Data& args = *(NumbersTest_Data*)user;
-	eiASSERT( task == (void*)1 );
-
-	int& frame = *(int*)thread;
-	//eiInfo(Test, "Work %d", frame);
-	ExecuteSchedules( a, frame, args.s, args.numSchedules, ThreadGroup() );
-	++frame;
-}
-
-
-//	typedef void* (FnAllocThread)(Scope& a, void* user);
-//	typedef void* (FnPrepareTask)(Scope& a, Scope& frame, void* user, void* thread);//return 0 to break
-//	typedef void  (FnExecuteTask)(Scope& a, Scope& frame, void* user, void* thread, void* task);
-
-//void NumbersTest_Init(Scope& a, Scope& frame, void* user);
-//void NumbersTest_Worker(Scope& thread, Scope& frame, void* user);
-
-static void NumbersTest(Scope& a)
+static void NumbersTest(Scope& a, ConcurrentFrames::Type c)
 {
 	NumbersTest_Data args = { &a, 0 };
-	TimedLoop::Start( a, &args, &NumbersTest_Init, &NumbersTest_Prepare, &NumbersTest_Worker );
+	SimLoop::Start<NumbersTest_Data>( a, &args, c, eiMiB(128), eiMiB(1) );
 }
 //-------------------------------------------------------------------
 //-------------------------------------------------------------------
@@ -329,19 +327,182 @@ static void BasicTest(Scope& a)
 //-------------------------------------------------------------------
 //-------------------------------------------------------------------
 
+eiInfoGroup(Test, true);
 eiTEST( TaskSchedule )
 {
-	u32   const stackSize = eiGiB(1);
-	void* const stackMem = malloc( stackSize );
+	u32   const stackSize = eiMiB(256);
+	ScopedMalloc stackMem( stackSize );
+	StackAlloc stack( stackMem, stackSize );
+	Scope scope( stack, "main" );
+	Timer& timer = *eiNew(scope, Timer)();
+	ConcurrentFrames::Type conc[] = { ConcurrentFrames::OneFrame, ConcurrentFrames::TwoFrames, ConcurrentFrames::ThreeFrames };
+	double* totals = eiAllocArray(scope, double, ArraySize(conc));
+	for( int i=0; i!=ArraySize(conc); ++i )
+		totals[i] = 0;
+	
+	void TestAB(Timer& timer); TestAB(timer);
+	timer.Reset();
+
+	return;
+
 	for( int i=0; i!=stress; ++i )
 	{
-		eiInfo(TaskSection, "%d.", i);
-		StackAlloc stack( stackMem, stackSize );
-		Scope a( stack, "Test" );
+		Scope a( scope, "Test" );
 
 		BasicTest(a);
 
-		NumbersTest(a);
+		int idx = i%ArraySize(conc);
+
+		timer.Reset();
+		NumbersTest(a, conc[idx]);
+		double time = timer.Elapsed(true);
+
+		totals[idx] += time;
+		
+	//	eiInfo(Test, "%d. %.4f", i, time);
 	}
-	free( stackMem );
+	for( int i=0; i!=ArraySize(conc); ++i )
+	{
+		eiInfo(Test, "type %d: %.2f", conc[i], totals[i]);
+	}
+}
+
+
+#define FORCEINLINE __forceinline 
+#define FASTCALL __fastcall 
+namespace Version1
+{
+	struct A { virtual void DoStuff() {}; int a; };
+	struct B : public A { void DoStuff() { b = a; } int b; };
+}
+namespace Version2 // translate Version1 into C
+{
+	struct A;
+	struct A_VTable { typedef void (*FnDoStuff)(A*); FnDoStuff DoStuff; };
+	struct A { A_VTable* vtable; int a; };
+	FORCEINLINE void FASTCALL A_DoStuff( A* obj ) { (*obj->vtable->DoStuff)(obj); }
+	struct B { A base; int b; };
+	void B_DoStuff( B* obj ) { obj->b = obj->base.a; }
+	A_VTable g_B_VTable = { (A_VTable::FnDoStuff)&B_DoStuff };
+	FORCEINLINE void FASTCALL B_Construct( B* obj ) { obj->base.vtable = &g_B_VTable; }
+}
+namespace Version3 // optimize version2 by embedding the vtable in the object
+{
+	struct A {
+		typedef void (A::*FnDoStuff)();
+		FORCEINLINE A(FnDoStuff p) : pfnDoStuff(p) {}
+		FnDoStuff pfnDoStuff;
+		int a;
+		FORCEINLINE void FASTCALL DoStuff() { (this->*pfnDoStuff)(); }
+	};
+	struct B : public A {
+		FORCEINLINE B() : A(static_cast<FnDoStuff>(&B::DoStuff)) {}
+		void DoStuff() { b = a; }
+		int b;
+	};
+}
+
+static const int cacheSize = eiMiB(10);
+int FlushCache(void* cache)
+{
+	memset(cache, 0, cacheSize);
+	int result = 0;
+	int* data = (int*)cache;
+	for( int i=0; i<(cacheSize/sizeof(int)); ++i )
+		result += data[i];
+	return result;
+}
+
+#include <stdio.h>
+void TestAB(Timer& timer)
+{
+	void* cache = malloc(cacheSize);
+	double v1Derived = 0, v2Derived = 0, v3Derived = 0;
+	double v1Base = 0, v2Base = 0, v3Base = 0;
+	double v1Total = 0, v2Total = 0, v3Total = 0;
+	int dontOptimize1 = 0, dontOptimize2 = 0, dontOptimize3 = 0;
+	int stress = 10;
+
+	dontOptimize1 += FlushCache(cache);
+	double v1Start = timer.Elapsed();
+	for( int c=0; c!=stress; ++c )
+	{
+		Version1::B obj;
+		Version1::A* base = &obj;
+		double start = timer.Elapsed();
+		for( int i=0; i!=stress; ++i )
+		{
+			obj.a = i;
+			obj.DoStuff();
+		}
+		v1Derived += timer.Elapsed() - start;
+		start = timer.Elapsed();
+		for( int i=0; i!=stress; ++i )
+		{
+			base->a = i;
+			base->DoStuff();
+		}
+		v1Base += timer.Elapsed() - start;
+		dontOptimize1 += obj.b;
+	}
+	v1Total = timer.Elapsed() - v1Start;
+
+	dontOptimize2 += FlushCache(cache);
+	double v2Start = timer.Elapsed();
+	for( int c=0; c!=stress; ++c )
+	{
+		Version2::B obj;
+		B_Construct( &obj );
+		Version2::A* base = &obj.base;
+		double start = timer.Elapsed();
+		for( int i=0; i!=stress; ++i )
+		{
+			obj.base.a = i;
+			B_DoStuff( &obj );
+		}
+		v2Derived += timer.Elapsed() - start;
+		start = timer.Elapsed();
+		for( int i=0; i!=stress; ++i )
+		{
+			base->a = i;
+			A_DoStuff( base );
+		}
+		v2Base += timer.Elapsed() - start;
+		dontOptimize2 += obj.b;
+	}
+	v2Total = timer.Elapsed() - v2Start;
+
+	dontOptimize3 += FlushCache(cache);
+	double v3Start = timer.Elapsed();
+	for( int c=0; c!=stress; ++c )
+	{
+		Version3::B obj;
+		Version3::A* base = &obj;
+		double start = timer.Elapsed();
+		for( int i=0; i!=stress; ++i )
+		{
+			obj.a = i;
+			obj.DoStuff();
+		}
+		v3Derived += timer.Elapsed() - start;
+		start = timer.Elapsed();
+		for( int i=0; i!=stress; ++i )
+		{
+			base->a = i;
+			base->DoStuff();
+		}
+		v3Base += timer.Elapsed() - start;
+		dontOptimize3 += obj.b;
+	}
+	v3Total = timer.Elapsed() - v3Start;
+
+	eiASSERT( dontOptimize1 == dontOptimize2 );
+	eiASSERT( dontOptimize1 == dontOptimize3 );
+
+	free(cache);
+/*
+	printf( "   Total   Derived   Base\n" );
+	printf( "1) %.2f    %.2f      %.2f\n", v1Total, v1Derived, v1Base );
+	printf( "2) %.2f    %.2f      %.2f\n", v2Total, v2Derived, v2Base );
+	printf( "3) %.2f    %.2f      %.2f\n", v3Total, v3Derived, v3Base );*/
 }

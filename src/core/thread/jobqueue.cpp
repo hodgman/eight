@@ -26,8 +26,8 @@ public:
 
 		InitializeCriticalSection( &m_jobLock );
 
-		HANDLE m_worker1 = CreateThread( 0, 0, &ThreadMain, &m_workerData, 0, 0 );
-		HANDLE m_worker2 = CreateThread( 0, 0, &ThreadMain, &m_workerData, 0, 0 );
+		m_worker1 = CreateThread( 0, 0, &ThreadMain, &m_workerData, 0, 0 );
+		m_worker2 = CreateThread( 0, 0, &ThreadMain, &m_workerData, 0, 0 );
 	}
 	~WorkerThreads()
 	{

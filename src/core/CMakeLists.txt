@@ -20,6 +20,7 @@ math/arithmetic.h
 math/tmp.h
 application.h
 test.h
+hash.h
 noncopyable.h
 variablestream.h
 variablestream.hpp
@@ -40,7 +41,8 @@ alloc/stack.hpp
 alloc/scope.h
 alloc/scope.hpp
 alloc/scopearray.h
-alloc/resourcepool.h 
+alloc/pool.h 
+alloc/malloc.h 
  )
  
 AddSourceGroup( Blob  
@@ -79,6 +81,7 @@ thread/jobqueue.cpp
 thread/fifo_spsc.cpp
 thread/fifo_mpmc.cpp
 thread/latentpipe.cpp
+thread/latent.h
 thread/thread.h
 thread/pool.h
 thread/task.h

@@ -64,6 +64,8 @@ template<class T> struct Reflect;
 		const DataBinding*     s_data = 0; uint s_dataSize = 0;	/* defaults */			\
 		const MethodBinding*   s_meth = 0; uint s_methSize = 0;							\
 		const FunctionBinding* s_func = 0; uint s_funcSize = 0;							\
+		eiUNUSED(s_data    );eiUNUSED(s_meth    );eiUNUSED(s_func    );					\
+		eiUNUSED(s_dataSize);eiUNUSED(s_methSize);eiUNUSED(s_funcSize);					\
 		{																				//
 # define eiBeginData()																	\
 			const static DataBinding s_data[] = {	/* overwrites name of default */	//

@@ -16,7 +16,6 @@ public:
 	//bool Valid() const;
 	void Clear();
 	//bool IsClear() const { return cursor == begin; }
-	//u8*  Begin() { return begin; }
 	bool Align( uint );
 	inline u8* Alloc( u32 required, u32 reserve );
 	inline           u8* Alloc( u32 size  );
@@ -24,6 +23,7 @@ public:
 	template<class T> T* Alloc( u32 count );
 	void Unwind(const void* p);
 	const u8* Mark() const;
+	const u8* Begin() const;
 	u32 Capacity() const { return end-begin; }
 
 	void TransferOwnership(const void* from, const void* to) { eiASSERT(from==owner); owner=to; }

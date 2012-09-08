@@ -1,17 +1,18 @@
 //------------------------------------------------------------------------------
 #include <eight/core/test.h>
 #include <eight/core/application.h>
-#include <eight/core/alloc/stack.h>
+#include <eight/core/alloc/malloc.h>
 #include <eight/core/alloc/scope.h>
-#include <eight/core/alloc/resourcepool.h>
+#include <eight/core/alloc/pool.h>
 #include <eight/core/timer/timer.h>
 #include <eight/core/timer/timer_impl.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <deque>
 #include <list>
 using namespace eight;
 //------------------------------------------------------------------------------
+
+//TODO - revisit these ideas
 
 void* operator new(size_t s, StackAlloc& a) {return a.Alloc(s);}
 void operator delete(void*, StackAlloc&){}
@@ -162,7 +163,7 @@ struct Scene
 
 eiENTRY_POINT( test_main )
 int test_main( int argc, char** argv )
-{
+{/*
 	const u32 W = 1280;
 	const u32 H = 720;
 	const u32 R = 128;
@@ -181,7 +182,7 @@ int test_main( int argc, char** argv )
 
 
 	const u32 scratchSize = 1024*1024*100;
-	u8* scratch = (u8*)malloc(scratchSize);
+	u8* scratch = (u8*)Malloc(scratchSize);
 
 	void test2(void* scratch, uint scratchSize);
 	test2(scratch, scratchSize);
@@ -229,7 +230,7 @@ int test_main( int argc, char** argv )
 	entry->onBegin->Trigger(c);
 	c.Execute();
 
-	free(scratch);
+	Free(scratch);*/
 	
 	int errorCount = 0;
 	eiRUN_TEST( Bind, errorCount );
@@ -258,7 +259,7 @@ void test2(void* scratch, uint scratchSize)
 		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			std::list<int> lst;
-			for(int itr = 0; itr < 500; itr++)
+			for(int itr = 0; itr < 50; itr++)
 			{
 				lst.push_front(itr);
 			}
@@ -280,9 +281,9 @@ void test2(void* scratch, uint scratchSize)
 		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 500; itr++)
+			for(int itr = 0; itr < 50; itr++)
 			{
-				ListItem* push = (ListItem*)malloc(sizeof(ListItem));
+				ListItem* push = (ListItem*)Malloc(sizeof(ListItem));
 				push->next = lst;
 				push->data = itr;
 				lst = push;
@@ -292,7 +293,7 @@ void test2(void* scratch, uint scratchSize)
 			{
 				ListItem* dead = lst;
 				lst = dead->next;
-				free(dead);
+				Free(dead);
 			}
 		}
 		double end = timer->Elapsed();
@@ -306,7 +307,7 @@ void test2(void* scratch, uint scratchSize)
 		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 500; itr++)
+			for(int itr = 0; itr < 50; itr++)
 			{
 				ListItem* push = new ListItem;
 				push->next = lst;
@@ -326,14 +327,14 @@ void test2(void* scratch, uint scratchSize)
 	}
 
 	eiInfo(AllocProfile, "########Pool########");
-	ResourcePool<ListItem> pool(a,10000);
+	Pool<ListItem, false> pool(a,10000);
 	for(int itrSample = 0; itrSample < 3; itrSample++)
 	{
 		double begin = timer->Elapsed();
 		for(int itrItr = 0; itrItr < 10; itrItr++)
 		{
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 500; itr++)
+			for(int itr = 0; itr < 50; itr++)
 			{
 				ListItem* push = pool.Alloc();//(ListItem*)lca.newObject(sizeof(ListItem));
 				push->next = lst;
@@ -360,7 +361,7 @@ void test2(void* scratch, uint scratchSize)
 		{
 			Scope t(a,"");
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 500; itr++)
+			for(int itr = 0; itr < 50; itr++)
 			{
 				ListItem* push = eiNew(t, ListItem);
 				push->next = lst;
@@ -380,7 +381,7 @@ void test2(void* scratch, uint scratchSize)
 		{
 			Scope t(a,"");
 			ListItem* lst = 0;
-			for(int itr = 0; itr < 500; itr++)
+			for(int itr = 0; itr < 50; itr++)
 			{
 				ListItem* push = eiAlloc(t, ListItem);
 				push->next = lst;
@@ -391,7 +392,7 @@ void test2(void* scratch, uint scratchSize)
 		double end = timer->Elapsed();
 		eiInfo(AllocProfile, "Sample %d Time: %f ms", itrSample, float(end - begin)*1000.0f);
 		
-		char* data = (char*)malloc(640*1024);//640KiB should be enough for anybody
+		char* data = (char*)Malloc(640*1024);//640KiB should be enough for anybody
 		int& fooVec = *new(data) int;
 		data += sizeof(fooVec);
 	}

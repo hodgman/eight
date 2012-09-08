@@ -1,7 +1,7 @@
 #pragma once
 
 #ifdef eiBUILD_EXCEPTIONS
-#define THROW( a ) throw a
+#define eiTHROW( a ) throw a
 #else
-#define THROW( a ) 
+#define eiTHROW( a ) eiASSERT(false&&#a)
 #endif
