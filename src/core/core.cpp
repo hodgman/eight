@@ -32,6 +32,14 @@ void eight::Free( void* p )
 {
 	free( p );
 }
+void* eight::AlignedMalloc( uint size, uint align )
+{
+	return _aligned_malloc( size, align );
+}
+void eight::AlignedFree( void* p )
+{
+	_aligned_free( p );
+}
 
 
 template<bool> struct IndexMeta       { typedef uint32 Type; const static int size = 32; };

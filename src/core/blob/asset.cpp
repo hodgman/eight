@@ -1,7 +1,6 @@
 #include <eight/core/blob/types.h>
 #include <eight/core/blob/loader.h>
 #include <eight/core/blob/asset.h>
-#include "eight/core/os/win32.h"
 #include "eight/core/thread/fifo_mpmc.h"
 #include "eight/core/thread/atomic.h"
 #include "eight/core/hash.h"

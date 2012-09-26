@@ -151,14 +151,13 @@ struct _GLFWwin_struct {
 // ========= PLATFORM INDEPENDENT MANDATORY PART =========================
 
     // User callback functions
-    OsWindow::windowsizefun    WindowSizeCallback;
-    //OsWindow::windowclosefun   WindowCloseCallback;
-    OsWindow::windowrefreshfun WindowRefreshCallback;
-    OsWindow::mousebuttonfun   MouseButtonCallback;
-    OsWindow::mouseposfun      MousePosCallback;
-    OsWindow::mousewheelfun    MouseWheelCallback;
-    OsWindow::keyfun           KeyCallback;
-    OsWindow::charfun          CharCallback;
+	void*                      UserData;
+    OsWindow::FnWindowSize*    WindowSizeCallback;
+    OsWindow::FnMouseButton*   MouseButtonCallback;
+    OsWindow::FnMousePos*      MousePosCallback;
+    OsWindow::FnMouseWheel*    MouseWheelCallback;
+    OsWindow::FnKey*           KeyCallback;
+    OsWindow::FnChar*          CharCallback;
 
     // User selected window settings
     bool      Fullscreen;      // Fullscreen flag
@@ -208,10 +207,10 @@ struct GlfwInput{
     // Mouse status
     int  MousePosX, MousePosY;
     int  WheelPos;
-	char MouseButton[ OsWindow::GLFW_MOUSE_BUTTON_LAST+1 ];
+	char MouseButton[ MouseInput::Last+1 ];
 
     // Keyboard status
-    char Key[ OsWindow::GLFW_KEY_LAST+1 ];
+    char Key[ Key::Last+1 ];
     int  LastChar;
 
     // User selected settings
@@ -337,7 +336,7 @@ public:
 	void InputKey( int key, int action );
 	void InputChar( int character, int action );
 	void InputMouseClick( int button, int action );
-	bool OpenWindow( int width, int height, int mode, const char* title );
+	bool OpenWindow( int width, int height, int mode, const char* title, const Callbacks& );
 	bool IsWindowOpen() { return _glfwWin.Opened; }
 	void CloseWindow();
 	void SetWindowTitle( const char *title );
@@ -346,9 +345,7 @@ public:
 	void SetWindowPos( int x, int y );
 	void IconifyWindow();
 	void RestoreWindow();
-	void SetWindowSizeCallback( windowsizefun cbfun );
-	//void SetWindowCloseCallback( windowclosefun cbfun );
-	void SetWindowRefreshCallback( windowrefreshfun cbfun );
+
 	bool PollEvents(uint maxMessages, const Timer* t, float maxTime);
 	//void WaitEvents();
 	void ShowMouseCursor( bool );
@@ -385,11 +382,11 @@ OsWindowWin32::~OsWindowWin32()
 		CloseWindow();
 }
 
-OsWindow* OsWindow::New( Scope& a, const ThreadGroup& thread, int width, int height, WindowMode mode, const char* title )
+OsWindow* OsWindow::New( Scope& a, const ThreadGroup& thread, int width, int height, WindowMode::Type mode, const char* title, const Callbacks& c )
 {
 	eiASSERT( thread.Current() );
 	OsWindowWin32* win = eiNew( a, OsWindowWin32 )( thread );
-	bool ok = win->OpenWindow( width, height, mode, title );
+	bool ok = win->OpenWindow( width, height, mode, title, c );
 	eiASSERT( ok );
 	return win;
 }
@@ -420,7 +417,7 @@ void OsWindowWin32::ClearInput( void )
     int i;
 
     // Release all keyboard keys
-    for( i = 0; i <= GLFW_KEY_LAST; i ++ )
+    for( i = 0; i <= Key::Last; i ++ )
     {
         _glfwInput.Key[ i ] = 0;
     }
@@ -429,7 +426,7 @@ void OsWindowWin32::ClearInput( void )
     _glfwInput.LastChar = 0;
 
     // Release all mouse buttons
-    for( i = 0; i <= GLFW_MOUSE_BUTTON_LAST; i ++ )
+    for( i = 0; i <= MouseInput::Last; i ++ )
     {
         _glfwInput.MouseButton[ i ] = 0;
     }
@@ -446,7 +443,8 @@ void OsWindowWin32::ClearInput( void )
     _glfwInput.StickyMouseButtons = false;
 
     // The default is to disable key repeat
-    _glfwInput.KeyRepeat = false;
+    //_glfwInput.KeyRepeat = false;
+    _glfwInput.KeyRepeat = true;
 }
 
 
@@ -458,30 +456,30 @@ void OsWindowWin32::InputKey( int key, int action )
 {
     int keyrepeat = 0;
 
-    if( key >= 0 && key <= GLFW_KEY_LAST )
+    if( key >= 0 && key <= Key::Last )
     {
         // Are we trying to release an already released key?
-        if( action == GLFW_RELEASE && _glfwInput.Key[ key ] != 1 )
+        if( action == ButtonState::Release && _glfwInput.Key[ key ] != 1 )
         {
             return;
         }
 
         // Register key action
-        if( action == GLFW_RELEASE && _glfwInput.StickyKeys )
+        if( action == ButtonState::Release && _glfwInput.StickyKeys )
         {
             _glfwInput.Key[ key ] = 2;
         }
         else
         {
-            keyrepeat = (_glfwInput.Key[ key ] == GLFW_PRESS) &&
-                        (action == GLFW_PRESS);
+            keyrepeat = (_glfwInput.Key[ key ] == ButtonState::Press) &&
+                        (action == ButtonState::Press);
             _glfwInput.Key[ key ] = (char) action;
         }
 
         // Call user callback function
         if( _glfwWin.KeyCallback && (_glfwInput.KeyRepeat || !keyrepeat) )
         {
-            _glfwWin.KeyCallback( key, action );
+            _glfwWin.KeyCallback( _glfwWin.UserData, (Key::Type)key, (ButtonState::Type)action );
         }
     }
 }
@@ -502,13 +500,13 @@ void OsWindowWin32::InputChar( int character, int action )
     }
 
     // Is this a key repeat?
-    if( action == GLFW_PRESS && _glfwInput.LastChar == character )
+    if( action == ButtonState::Press && _glfwInput.LastChar == character )
     {
         keyrepeat = 1;
     }
 
     // Store this character as last character (or clear it, if released)
-    if( action == GLFW_PRESS )
+    if( action == ButtonState::Press )
     {
         _glfwInput.LastChar = character;
     }
@@ -520,7 +518,7 @@ void OsWindowWin32::InputChar( int character, int action )
     // Call user callback function
     if( _glfwWin.CharCallback && (_glfwInput.KeyRepeat || !keyrepeat) )
     {
-        _glfwWin.CharCallback( character, action );
+        _glfwWin.CharCallback( _glfwWin.UserData, character, (ButtonState::Type)action );
     }
 }
 
@@ -531,10 +529,10 @@ void OsWindowWin32::InputChar( int character, int action )
 
 void OsWindowWin32::InputMouseClick( int button, int action )
 {
-    if( button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST )
+    if( button >= 0 && button <= MouseInput::Last )
     {
         // Register mouse button action
-        if( action == GLFW_RELEASE && _glfwInput.StickyMouseButtons )
+        if( action == ButtonState::Release && _glfwInput.StickyMouseButtons )
         {
             _glfwInput.MouseButton[ button ] = 2;
         }
@@ -546,7 +544,7 @@ void OsWindowWin32::InputMouseClick( int button, int action )
         // Call user callback function
         if( _glfwWin.MouseButtonCallback )
         {
-            _glfwWin.MouseButtonCallback( button, action );
+            _glfwWin.MouseButtonCallback( _glfwWin.UserData, (MouseInput::Type)button, (ButtonState::Type)action );
         }
     }
 }
@@ -683,10 +681,10 @@ static void _glfwPlatformRefreshWindowParams( _GLFWwin& _glfwWin )
 //========================================================================
 
 static void* g_window;//todo
-bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* title )
+bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* title, const Callbacks& c )
 {
 	eiASSERT( !_glfwWin.Opened );
-    eiASSERT( mode == GLFW_WINDOW || mode == GLFW_FULLSCREEN );
+	eiASSERT( mode == WindowMode::Window || mode == WindowMode::FullScreen );
 
     // Clear GLFW window state
     _glfwWin.Active            = true;
@@ -696,21 +694,20 @@ bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* tit
     ClearInput();
 
     // Unregister all callback functions
-    _glfwWin.WindowSizeCallback    = 0;
-    //_glfwWin.WindowCloseCallback   = 0;
-    _glfwWin.WindowRefreshCallback = 0;
-    _glfwWin.KeyCallback           = 0;
-    _glfwWin.CharCallback          = 0;
-    _glfwWin.MousePosCallback      = 0;
-    _glfwWin.MouseButtonCallback   = 0;
-    _glfwWin.MouseWheelCallback    = 0;
+    _glfwWin.UserData              = c.userData;
+    _glfwWin.WindowSizeCallback    = c.windowSize;
+    _glfwWin.MouseButtonCallback   = c.mouseButton;
+    _glfwWin.MousePosCallback      = c.mousePos;
+    _glfwWin.MouseWheelCallback    = c.mouseWheel;
+    _glfwWin.KeyCallback           = c.key;
+    _glfwWin.CharCallback          = c.chars;
 
     eiASSERT( width > 0 && height > 0 );
 
     // Remeber window settings
     _glfwWin.Width      = width;
     _glfwWin.Height     = height;
-    _glfwWin.Fullscreen = (mode == GLFW_FULLSCREEN ? 1 : 0);
+    _glfwWin.Fullscreen = (mode == WindowMode::FullScreen ? 1 : 0);
 
     // Clear platform specific GLFW window state
     _glfwWin.DC                = NULL;
@@ -1136,54 +1133,6 @@ void OsWindowWin32::RestoreWindow()
 }
 
 //========================================================================
-// glfwSetWindowSizeCallback() - Set callback function for window size
-// changes
-//========================================================================
-
-void OsWindowWin32::SetWindowSizeCallback( windowsizefun cbfun )
-{
-	eiASSERT( IsWindowOpen() );
-
-    // Set callback function
-    _glfwWin.WindowSizeCallback = cbfun;
-
-    // Call the callback function to let the application know the current
-    // window size
-    if( cbfun )
-    {
-        cbfun( _glfwWin.Width, _glfwWin.Height );
-    }
-}
-
-//========================================================================
-// glfwSetWindowCloseCallback() - Set callback function for window close
-// events
-//========================================================================
-/*
-void OsWindowWin32::SetWindowCloseCallback( windowclosefun cbfun )
-{
-	eiASSERT( IsWindowOpen() );
-
-    // Set callback function
-    _glfwWin.WindowCloseCallback = cbfun;
-}*/
-
-
-//========================================================================
-// glfwSetWindowRefreshCallback() - Set callback function for window
-// refresh events
-//========================================================================
-
-void OsWindowWin32::SetWindowRefreshCallback( windowrefreshfun cbfun )
-{
-	eiASSERT( IsWindowOpen() );
-
-    // Set callback function
-    _glfwWin.WindowRefreshCallback = cbfun;
-}
-
-
-//========================================================================
 // glfwPollEvents() - Poll for new window and input events
 //========================================================================
 
@@ -1251,10 +1200,10 @@ bool OsWindowWin32::PollEvents(uint maxMessages, const Timer* timer, float maxTi
     int lshift_down = (GetAsyncKeyState( VK_LSHIFT ) >> 15) & 1;
     int rshift_down = (GetAsyncKeyState( VK_RSHIFT ) >> 15) & 1;
     // See if this differs from our belief of what has happened (we only have to check for lost key up events)
-    if( !lshift_down && _glfwInput.Key[ GLFW_KEY_LSHIFT ] == 1 )
-        InputKey( GLFW_KEY_LSHIFT, GLFW_RELEASE );
-    if( !rshift_down && _glfwInput.Key[ GLFW_KEY_RSHIFT ] == 1 )
-        InputKey( GLFW_KEY_RSHIFT, GLFW_RELEASE );
+    if( !lshift_down && _glfwInput.Key[ Key::LShift ] == 1 )
+        InputKey( Key::LShift, ButtonState::Release );
+    if( !rshift_down && _glfwInput.Key[ Key::RShift ] == 1 )
+        InputKey( Key::RShift, ButtonState::Release );
 
     // Did we have mouse movement in locked cursor mode?
     if( _glfwInput.MouseMoved && _glfwWin.MouseLock )
@@ -1431,11 +1380,11 @@ LRESULT OsWindowWin32::WindowCallback( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
             // Translate and report key press
-            InputKey( TranslateKey( wParam, lParam ), GLFW_PRESS );
+            InputKey( TranslateKey( wParam, lParam ), ButtonState::Press );
 
             // Translate and report character input
             if( _glfwWin.CharCallback )
-                TranslateChar( wParam, lParam, GLFW_PRESS );
+                TranslateChar( wParam, lParam, ButtonState::Press );
             return 0;
 
         // Is a key being released?
@@ -1444,66 +1393,66 @@ LRESULT OsWindowWin32::WindowCallback( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
             // Special trick: release both shift keys on SHIFT up event
             if( wParam == VK_SHIFT )
             {
-                InputKey( GLFW_KEY_LSHIFT, GLFW_RELEASE );
-                InputKey( GLFW_KEY_RSHIFT, GLFW_RELEASE );
+                InputKey( Key::LShift, ButtonState::Release );
+                InputKey( Key::RShift, ButtonState::Release );
             }
             else // Translate and report key release
-                InputKey( TranslateKey( wParam, lParam ), GLFW_RELEASE );
+                InputKey( TranslateKey( wParam, lParam ), ButtonState::Release );
 
             // Translate and report character input
             if( _glfwWin.CharCallback )
-                TranslateChar( wParam, lParam, GLFW_RELEASE );
+                TranslateChar( wParam, lParam, ButtonState::Release );
             return 0;
 
         // Were any of the mouse-buttons pressed?
         case WM_LBUTTONDOWN:
             SetCapture(hWnd);
-            InputMouseClick( GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS );
+            InputMouseClick( MouseInput::Left, ButtonState::Press );
             return 0;
         case WM_RBUTTONDOWN:
             SetCapture(hWnd);
-            InputMouseClick( GLFW_MOUSE_BUTTON_RIGHT, GLFW_PRESS );
+            InputMouseClick( MouseInput::Right, ButtonState::Press );
             return 0;
         case WM_MBUTTONDOWN:
             SetCapture(hWnd);
-            InputMouseClick( GLFW_MOUSE_BUTTON_MIDDLE, GLFW_PRESS );
+            InputMouseClick( MouseInput::Middle, ButtonState::Press );
             return 0;
         case WM_XBUTTONDOWN:
             if( HIWORD(wParam) == XBUTTON1 )
             {
                 SetCapture(hWnd);
-                InputMouseClick( GLFW_MOUSE_BUTTON_4, GLFW_PRESS );
+                InputMouseClick( MouseInput::Btn4, ButtonState::Press );
             }
             else if( HIWORD(wParam) == XBUTTON2 )
             {
                 SetCapture(hWnd);
-                InputMouseClick( GLFW_MOUSE_BUTTON_5, GLFW_PRESS );
+                InputMouseClick( MouseInput::Btn5, ButtonState::Press );
             }
             return 1;
 
         // Were any of the mouse-buttons released?
         case WM_LBUTTONUP:
             ReleaseCapture();
-            InputMouseClick( GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE );
+            InputMouseClick( MouseInput::Left, ButtonState::Release );
             return 0;
         case WM_RBUTTONUP:
             ReleaseCapture();
-            InputMouseClick( GLFW_MOUSE_BUTTON_RIGHT, GLFW_RELEASE );
+            InputMouseClick( MouseInput::Right, ButtonState::Release );
             return 0;
         case WM_MBUTTONUP:
             ReleaseCapture();
-            InputMouseClick( GLFW_MOUSE_BUTTON_MIDDLE, GLFW_RELEASE );
+            InputMouseClick( MouseInput::Middle, ButtonState::Release );
             return 0;
         case WM_XBUTTONUP:
             if( HIWORD(wParam) == XBUTTON1 )
             {
                 ReleaseCapture();
-                InputMouseClick( GLFW_MOUSE_BUTTON_4, GLFW_RELEASE );
+                InputMouseClick( MouseInput::Btn4, ButtonState::Release );
             }
             else if( HIWORD(wParam) == XBUTTON2 )
             {
                 ReleaseCapture();
-                InputMouseClick( GLFW_MOUSE_BUTTON_5, GLFW_RELEASE );
+                InputMouseClick( MouseInput::Btn5, ButtonState::Release );
             }
             return 1;
 
@@ -1538,8 +1487,7 @@ LRESULT OsWindowWin32::WindowCallback( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
                     // Call user callback function
                     if( _glfwWin.MousePosCallback )
                     {
-                        _glfwWin.MousePosCallback( _glfwInput.MousePosX,
-                                                   _glfwInput.MousePosY );
+                        _glfwWin.MousePosCallback( _glfwWin.UserData, _glfwInput.MousePosX, _glfwInput.MousePosY, _glfwWin.MouseLock );
                     }
                 }
             }
@@ -1551,7 +1499,7 @@ LRESULT OsWindowWin32::WindowCallback( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
             _glfwInput.WheelPos += WheelDelta;
             if( _glfwWin.MouseWheelCallback )
             {
-                _glfwWin.MouseWheelCallback( _glfwInput.WheelPos );
+                _glfwWin.MouseWheelCallback( _glfwWin.UserData, _glfwInput.WheelPos );
             }
             return 0;
 
@@ -1564,18 +1512,12 @@ LRESULT OsWindowWin32::WindowCallback( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
             _glfwWin.Height = HIWORD(lParam);
             if( _glfwWin.WindowSizeCallback )
             {
-                _glfwWin.WindowSizeCallback( LOWORD(lParam),
-                                             HIWORD(lParam) );
+                _glfwWin.WindowSizeCallback( _glfwWin.UserData, LOWORD(lParam), HIWORD(lParam) );
             }
             return 0;
 
         // Was the window contents damaged?
         case WM_PAINT:
-            // Call user callback function
-            if( _glfwWin.WindowRefreshCallback )
-            {
-                _glfwWin.WindowRefreshCallback();
-            }
             break;
 
         default:
@@ -1605,16 +1547,16 @@ int OsWindowWin32::TranslateKey( DWORD wParam, DWORD lParam )
             scan_code = MapVirtualKey( VK_RSHIFT, 0 );
             if( ((lParam & 0x01ff0000) >> 16) == scan_code )
             {
-                return GLFW_KEY_RSHIFT;
+                return Key::RShift;
             }
-            return GLFW_KEY_LSHIFT;
+            return Key::LShift;
 
         // The CTRL keys require special handling
         case VK_CONTROL:
             // Is this an extended key (i.e. right key)?
             if( lParam & 0x01000000 )
             {
-                return GLFW_KEY_RCTRL;
+                return Key::RCtrl;
             }
             // Here is a trick: "Alt Gr" sends LCTRL, then RALT. We only
             // want the RALT message, so we try to see if the next message
@@ -1631,86 +1573,86 @@ int OsWindowWin32::TranslateKey( DWORD wParam, DWORD lParam )
                     {
                         // Next message is a RALT down message, which
                         // means that this is NOT a proper LCTRL message!
-                        return GLFW_KEY_UNKNOWN;
+                        return Key::Unknown;
                     }
                 }
             }
-            return GLFW_KEY_LCTRL;
+            return Key::LCtrl;
 
         // The ALT keys require special handling
         case VK_MENU:
             // Is this an extended key (i.e. right key)?
             if( lParam & 0x01000000 )
             {
-                return GLFW_KEY_RALT;
+                return Key::RAlt;
             }
-            return GLFW_KEY_LALT;
+            return Key::LAlt;
 
         // The ENTER keys require special handling
         case VK_RETURN:
             // Is this an extended key (i.e. right key)?
             if( lParam & 0x01000000 )
             {
-                return GLFW_KEY_KP_ENTER;
+                return Key::KP_Enter;
             }
-            return GLFW_KEY_ENTER;
+            return Key::Enter;
 
         // Special keys (non character keys)
-        case VK_ESCAPE:        return GLFW_KEY_ESC;
-        case VK_TAB:           return GLFW_KEY_TAB;
-        case VK_BACK:          return GLFW_KEY_BACKSPACE;
-        case VK_HOME:          return GLFW_KEY_HOME;
-        case VK_END:           return GLFW_KEY_END;
-        case VK_PRIOR:         return GLFW_KEY_PAGEUP;
-        case VK_NEXT:          return GLFW_KEY_PAGEDOWN;
-        case VK_INSERT:        return GLFW_KEY_INSERT;
-        case VK_DELETE:        return GLFW_KEY_DEL;
-        case VK_LEFT:          return GLFW_KEY_LEFT;
-        case VK_UP:            return GLFW_KEY_UP;
-        case VK_RIGHT:         return GLFW_KEY_RIGHT;
-        case VK_DOWN:          return GLFW_KEY_DOWN;
-        case VK_F1:            return GLFW_KEY_F1;
-        case VK_F2:            return GLFW_KEY_F2;
-        case VK_F3:            return GLFW_KEY_F3;
-        case VK_F4:            return GLFW_KEY_F4;
-        case VK_F5:            return GLFW_KEY_F5;
-        case VK_F6:            return GLFW_KEY_F6;
-        case VK_F7:            return GLFW_KEY_F7;
-        case VK_F8:            return GLFW_KEY_F8;
-        case VK_F9:            return GLFW_KEY_F9;
-        case VK_F10:           return GLFW_KEY_F10;
-        case VK_F11:           return GLFW_KEY_F11;
-        case VK_F12:           return GLFW_KEY_F12;
-        case VK_F13:           return GLFW_KEY_F13;
-        case VK_F14:           return GLFW_KEY_F14;
-        case VK_F15:           return GLFW_KEY_F15;
-        case VK_F16:           return GLFW_KEY_F16;
-        case VK_F17:           return GLFW_KEY_F17;
-        case VK_F18:           return GLFW_KEY_F18;
-        case VK_F19:           return GLFW_KEY_F19;
-        case VK_F20:           return GLFW_KEY_F20;
-        case VK_F21:           return GLFW_KEY_F21;
-        case VK_F22:           return GLFW_KEY_F22;
-        case VK_F23:           return GLFW_KEY_F23;
-        case VK_F24:           return GLFW_KEY_F24;
-        case VK_SPACE:         return GLFW_KEY_SPACE;
+        case VK_ESCAPE:        return Key::Esc;
+        case VK_TAB:           return Key::Tab;
+        case VK_BACK:          return Key::Backspace;
+        case VK_HOME:          return Key::Home;
+        case VK_END:           return Key::End;
+        case VK_PRIOR:         return Key::PageUp;
+        case VK_NEXT:          return Key::PageDown;
+        case VK_INSERT:        return Key::Insert;
+        case VK_DELETE:        return Key::Del;
+        case VK_LEFT:          return Key::Left;
+        case VK_UP:            return Key::Up;
+        case VK_RIGHT:         return Key::Right;
+        case VK_DOWN:          return Key::Down;
+        case VK_F1:            return Key::F1;
+        case VK_F2:            return Key::F2;
+        case VK_F3:            return Key::F3;
+        case VK_F4:            return Key::F4;
+        case VK_F5:            return Key::F5;
+        case VK_F6:            return Key::F6;
+        case VK_F7:            return Key::F7;
+        case VK_F8:            return Key::F8;
+        case VK_F9:            return Key::F9;
+        case VK_F10:           return Key::F10;
+        case VK_F11:           return Key::F11;
+        case VK_F12:           return Key::F12;
+        case VK_F13:           return Key::F13;
+        case VK_F14:           return Key::F14;
+        case VK_F15:           return Key::F15;
+        case VK_F16:           return Key::F16;
+        case VK_F17:           return Key::F17;
+        case VK_F18:           return Key::F18;
+        case VK_F19:           return Key::F19;
+        case VK_F20:           return Key::F20;
+        case VK_F21:           return Key::F21;
+        case VK_F22:           return Key::F22;
+        case VK_F23:           return Key::F23;
+        case VK_F24:           return Key::F24;
+        case VK_SPACE:         return Key::Space;
 
         // Numeric keypad
-        case VK_NUMPAD0:       return GLFW_KEY_KP_0;
-        case VK_NUMPAD1:       return GLFW_KEY_KP_1;
-        case VK_NUMPAD2:       return GLFW_KEY_KP_2;
-        case VK_NUMPAD3:       return GLFW_KEY_KP_3;
-        case VK_NUMPAD4:       return GLFW_KEY_KP_4;
-        case VK_NUMPAD5:       return GLFW_KEY_KP_5;
-        case VK_NUMPAD6:       return GLFW_KEY_KP_6;
-        case VK_NUMPAD7:       return GLFW_KEY_KP_7;
-        case VK_NUMPAD8:       return GLFW_KEY_KP_8;
-        case VK_NUMPAD9:       return GLFW_KEY_KP_9;
-        case VK_DIVIDE:        return GLFW_KEY_KP_DIVIDE;
-        case VK_MULTIPLY:      return GLFW_KEY_KP_MULTIPLY;
-        case VK_SUBTRACT:      return GLFW_KEY_KP_SUBTRACT;
-        case VK_ADD:           return GLFW_KEY_KP_ADD;
-        case VK_DECIMAL:       return GLFW_KEY_KP_DECIMAL;
+        case VK_NUMPAD0:       return Key::KP_0;
+        case VK_NUMPAD1:       return Key::KP_1;
+        case VK_NUMPAD2:       return Key::KP_2;
+        case VK_NUMPAD3:       return Key::KP_3;
+        case VK_NUMPAD4:       return Key::KP_4;
+        case VK_NUMPAD5:       return Key::KP_5;
+        case VK_NUMPAD6:       return Key::KP_6;
+        case VK_NUMPAD7:       return Key::KP_7;
+        case VK_NUMPAD8:       return Key::KP_8;
+        case VK_NUMPAD9:       return Key::KP_9;
+        case VK_DIVIDE:        return Key::KP_Divide;
+        case VK_MULTIPLY:      return Key::KP_Multiply;
+        case VK_SUBTRACT:      return Key::KP_Subtract;
+        case VK_ADD:           return Key::KP_Add;
+        case VK_DECIMAL:       return Key::KP_Decimal;
 
         // The rest (should be printable keys)
         default:
@@ -1733,7 +1675,7 @@ int OsWindowWin32::TranslateKey( DWORD wParam, DWORD lParam )
             {
                 return (int) wParam;
             }
-            return GLFW_KEY_UNKNOWN;
+            return Key::Unknown;
     }
 }
 
@@ -1751,7 +1693,7 @@ void OsWindowWin32::TranslateChar( DWORD wParam, DWORD lParam, int action )
 
     // Derive scan code from lParam and action
     scan_code = (lParam & 0x01ff0000) >> 16;
-    if( action == GLFW_RELEASE )
+    if( action == ButtonState::Release )
     {
         scan_code |= 0x8000000;
     }

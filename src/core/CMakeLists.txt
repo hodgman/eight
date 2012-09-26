@@ -16,8 +16,6 @@ throw.h
 macro.h
 align.h
 performance.h
-math/arithmetic.h
-math/tmp.h
 application.h
 test.h
 hash.h
@@ -33,8 +31,15 @@ message.cpp
 message.h
  )
  
+AddSourceGroup( Math
+math/arithmetic.h
+math/tmp.h
+math/matrix.h
+math/vector.h
+ )
+ 
 AddSourceGroup( Alloc 
-alloc/stack.cpp
+alloc/scope.cpp
 alloc/new.h
 alloc/stack.h
 alloc/stack.hpp

@@ -8,164 +8,205 @@ class Scope;
 class Timer;
 class ThreadGroup;
 
+namespace MouseInput
+{
+	enum Type
+	{
+		Btn1,
+		Btn2,
+		Btn3,
+		Btn4,
+		Btn5,
+		Btn6,
+		Btn7,
+		Btn8,
+		Last   = Btn8,
+		Left   = Btn1,
+		Right  = Btn2,
+		Middle = Btn3,
+	};
+}
+
+// Keyboard key definitions: 8-bit ISO-8859-1 (Latin 1) encoding is used
+// for printable keys (such as A-Z, 0-9 etc), and values above 256
+// represent special (non-printable) keys (e.g. F1, Page Up etc).
+namespace Key
+{
+	enum Type
+	{
+		Unknown      = -1,
+		Space        = 32,
+		Special      = 256,
+		Esc          = (Special+1),
+		F1           = (Special+2),
+		F2           = (Special+3),
+		F3           = (Special+4),
+		F4           = (Special+5),
+		F5           = (Special+6),
+		F6           = (Special+7),
+		F7           = (Special+8),
+		F8           = (Special+9),
+		F9           = (Special+10),
+		F10          = (Special+11),
+		F11          = (Special+12),
+		F12          = (Special+13),
+		F13          = (Special+14),
+		F14          = (Special+15),
+		F15          = (Special+16),
+		F16          = (Special+17),
+		F17          = (Special+18),
+		F18          = (Special+19),
+		F19          = (Special+20),
+		F20          = (Special+21),
+		F21          = (Special+22),
+		F22          = (Special+23),
+		F23          = (Special+24),
+		F24          = (Special+25),
+		F25          = (Special+26),
+		Up           = (Special+27),
+		Down         = (Special+28),
+		Left         = (Special+29),
+		Right        = (Special+30),
+		LShift       = (Special+31),
+		RShift       = (Special+32),
+		LCtrl        = (Special+33),
+		RCtrl        = (Special+34),
+		LAlt         = (Special+35),
+		RAlt         = (Special+36),
+		Tab          = (Special+37),
+		Enter        = (Special+38),
+		Backspace    = (Special+39),
+		Insert       = (Special+40),
+		Del          = (Special+41),
+		PageUp       = (Special+42),
+		PageDown     = (Special+43),
+		Home         = (Special+44),
+		End          = (Special+45),
+		KP_0         = (Special+46),
+		KP_1         = (Special+47),
+		KP_2         = (Special+48),
+		KP_3         = (Special+49),
+		KP_4         = (Special+50),
+		KP_5         = (Special+51),
+		KP_6         = (Special+52),
+		KP_7         = (Special+53),
+		KP_8         = (Special+54),
+		KP_9         = (Special+55),
+		KP_Divide    = (Special+56),
+		KP_Multiply  = (Special+57),
+		KP_Subtract  = (Special+58),
+		KP_Add       = (Special+59),
+		KP_Decimal   = (Special+60),
+		KP_Equal     = (Special+61),
+		KP_Enter     = (Special+62),
+		Last         = KP_Enter,
+	};
+}
+
+namespace ButtonState
+{
+	enum Type
+	{
+		Release,
+		Press,
+	};
+}
+namespace WindowMode
+{
+	enum Type
+	{
+		Window               = 0x00010001,
+		FullScreen           = 0x00010002,
+	};
+}
+
 class OsWindow : NonCopyable
 {
 public:
-	enum WindowMode
+	typedef void (FnWindowSize )(void*, int width, int height);
+	typedef void (FnMouseButton)(void*, MouseInput::Type, ButtonState::Type);
+	typedef void (FnMousePos   )(void*, int x, int y, bool relative);
+	typedef void (FnMouseWheel )(void*, int z);
+	typedef void (FnKey        )(void*, Key::Type, ButtonState::Type);
+	typedef void (FnChar       )(void*, int character, ButtonState::Type);
+	struct Callbacks
 	{
-		GLFW_WINDOW               = 0x00010001,
-		GLFW_FULLSCREEN           = 0x00010002,
+		void*            userData;
+		FnWindowSize*    windowSize;
+		FnMouseButton*   mouseButton;
+		FnMousePos*      mousePos;
+		FnMouseWheel*    mouseWheel;
+		FnKey*           key;
+		FnChar*          chars;
 	};
 
-	static OsWindow* New( Scope& a, const ThreadGroup&, int width, int height, WindowMode, const char* title );
+	static OsWindow* New( Scope& a, const ThreadGroup&, int width, int height, WindowMode::Type, const char* title, const Callbacks& );
 
 	bool PollEvents(uint maxMessages=0, const Timer* t=0, float maxTime=0);//returns true if application exit event occurred
 
 	const ThreadGroup& Thread() const;
-
-	enum ButtonState
-	{
-		GLFW_RELEASE,
-		GLFW_PRESS,
-	};
-
-	// Keyboard key definitions: 8-bit ISO-8859-1 (Latin 1) encoding is used
-	// for printable keys (such as A-Z, 0-9 etc), and values above 256
-	// represent special (non-printable) keys (e.g. F1, Page Up etc).
-	enum Key
-	{
-		GLFW_KEY_UNKNOWN      = -1,
-		GLFW_KEY_SPACE        = 32,
-		GLFW_KEY_SPECIAL      = 256,
-		GLFW_KEY_ESC          = (GLFW_KEY_SPECIAL+1),
-		GLFW_KEY_F1           = (GLFW_KEY_SPECIAL+2),
-		GLFW_KEY_F2           = (GLFW_KEY_SPECIAL+3),
-		GLFW_KEY_F3           = (GLFW_KEY_SPECIAL+4),
-		GLFW_KEY_F4           = (GLFW_KEY_SPECIAL+5),
-		GLFW_KEY_F5           = (GLFW_KEY_SPECIAL+6),
-		GLFW_KEY_F6           = (GLFW_KEY_SPECIAL+7),
-		GLFW_KEY_F7           = (GLFW_KEY_SPECIAL+8),
-		GLFW_KEY_F8           = (GLFW_KEY_SPECIAL+9),
-		GLFW_KEY_F9           = (GLFW_KEY_SPECIAL+10),
-		GLFW_KEY_F10          = (GLFW_KEY_SPECIAL+11),
-		GLFW_KEY_F11          = (GLFW_KEY_SPECIAL+12),
-		GLFW_KEY_F12          = (GLFW_KEY_SPECIAL+13),
-		GLFW_KEY_F13          = (GLFW_KEY_SPECIAL+14),
-		GLFW_KEY_F14          = (GLFW_KEY_SPECIAL+15),
-		GLFW_KEY_F15          = (GLFW_KEY_SPECIAL+16),
-		GLFW_KEY_F16          = (GLFW_KEY_SPECIAL+17),
-		GLFW_KEY_F17          = (GLFW_KEY_SPECIAL+18),
-		GLFW_KEY_F18          = (GLFW_KEY_SPECIAL+19),
-		GLFW_KEY_F19          = (GLFW_KEY_SPECIAL+20),
-		GLFW_KEY_F20          = (GLFW_KEY_SPECIAL+21),
-		GLFW_KEY_F21          = (GLFW_KEY_SPECIAL+22),
-		GLFW_KEY_F22          = (GLFW_KEY_SPECIAL+23),
-		GLFW_KEY_F23          = (GLFW_KEY_SPECIAL+24),
-		GLFW_KEY_F24          = (GLFW_KEY_SPECIAL+25),
-		GLFW_KEY_F25          = (GLFW_KEY_SPECIAL+26),
-		GLFW_KEY_UP           = (GLFW_KEY_SPECIAL+27),
-		GLFW_KEY_DOWN         = (GLFW_KEY_SPECIAL+28),
-		GLFW_KEY_LEFT         = (GLFW_KEY_SPECIAL+29),
-		GLFW_KEY_RIGHT        = (GLFW_KEY_SPECIAL+30),
-		GLFW_KEY_LSHIFT       = (GLFW_KEY_SPECIAL+31),
-		GLFW_KEY_RSHIFT       = (GLFW_KEY_SPECIAL+32),
-		GLFW_KEY_LCTRL        = (GLFW_KEY_SPECIAL+33),
-		GLFW_KEY_RCTRL        = (GLFW_KEY_SPECIAL+34),
-		GLFW_KEY_LALT         = (GLFW_KEY_SPECIAL+35),
-		GLFW_KEY_RALT         = (GLFW_KEY_SPECIAL+36),
-		GLFW_KEY_TAB          = (GLFW_KEY_SPECIAL+37),
-		GLFW_KEY_ENTER        = (GLFW_KEY_SPECIAL+38),
-		GLFW_KEY_BACKSPACE    = (GLFW_KEY_SPECIAL+39),
-		GLFW_KEY_INSERT       = (GLFW_KEY_SPECIAL+40),
-		GLFW_KEY_DEL          = (GLFW_KEY_SPECIAL+41),
-		GLFW_KEY_PAGEUP       = (GLFW_KEY_SPECIAL+42),
-		GLFW_KEY_PAGEDOWN     = (GLFW_KEY_SPECIAL+43),
-		GLFW_KEY_HOME         = (GLFW_KEY_SPECIAL+44),
-		GLFW_KEY_END          = (GLFW_KEY_SPECIAL+45),
-		GLFW_KEY_KP_0         = (GLFW_KEY_SPECIAL+46),
-		GLFW_KEY_KP_1         = (GLFW_KEY_SPECIAL+47),
-		GLFW_KEY_KP_2         = (GLFW_KEY_SPECIAL+48),
-		GLFW_KEY_KP_3         = (GLFW_KEY_SPECIAL+49),
-		GLFW_KEY_KP_4         = (GLFW_KEY_SPECIAL+50),
-		GLFW_KEY_KP_5         = (GLFW_KEY_SPECIAL+51),
-		GLFW_KEY_KP_6         = (GLFW_KEY_SPECIAL+52),
-		GLFW_KEY_KP_7         = (GLFW_KEY_SPECIAL+53),
-		GLFW_KEY_KP_8         = (GLFW_KEY_SPECIAL+54),
-		GLFW_KEY_KP_9         = (GLFW_KEY_SPECIAL+55),
-		GLFW_KEY_KP_DIVIDE    = (GLFW_KEY_SPECIAL+56),
-		GLFW_KEY_KP_MULTIPLY  = (GLFW_KEY_SPECIAL+57),
-		GLFW_KEY_KP_SUBTRACT  = (GLFW_KEY_SPECIAL+58),
-		GLFW_KEY_KP_ADD       = (GLFW_KEY_SPECIAL+59),
-		GLFW_KEY_KP_DECIMAL   = (GLFW_KEY_SPECIAL+60),
-		GLFW_KEY_KP_EQUAL     = (GLFW_KEY_SPECIAL+61),
-		GLFW_KEY_KP_ENTER     = (GLFW_KEY_SPECIAL+62),
-		GLFW_KEY_LAST         = GLFW_KEY_KP_ENTER,
-	};
-
-	enum MouseButton
-	{
-		GLFW_MOUSE_BUTTON_1,
-		GLFW_MOUSE_BUTTON_2,
-		GLFW_MOUSE_BUTTON_3,
-		GLFW_MOUSE_BUTTON_4,
-		GLFW_MOUSE_BUTTON_5,
-		GLFW_MOUSE_BUTTON_6,
-		GLFW_MOUSE_BUTTON_7,
-		GLFW_MOUSE_BUTTON_8,
-		GLFW_MOUSE_BUTTON_LAST   = GLFW_MOUSE_BUTTON_8,
-		GLFW_MOUSE_BUTTON_LEFT   = GLFW_MOUSE_BUTTON_1,
-		GLFW_MOUSE_BUTTON_RIGHT  = GLFW_MOUSE_BUTTON_2,
-		GLFW_MOUSE_BUTTON_MIDDLE = GLFW_MOUSE_BUTTON_3,
-	};
-
-	enum Joystick
-	{
-		GLFW_JOYSTICK_1,
-		GLFW_JOYSTICK_2,
-		GLFW_JOYSTICK_3,
-		GLFW_JOYSTICK_4,
-		GLFW_JOYSTICK_5,
-		GLFW_JOYSTICK_6,
-		GLFW_JOYSTICK_7,
-		GLFW_JOYSTICK_8,
-		GLFW_JOYSTICK_9,
-		GLFW_JOYSTICK_10,
-		GLFW_JOYSTICK_11,
-		GLFW_JOYSTICK_12,
-		GLFW_JOYSTICK_13,
-		GLFW_JOYSTICK_14,
-		GLFW_JOYSTICK_15,
-		GLFW_JOYSTICK_16,
-		GLFW_JOYSTICK_LAST       = GLFW_JOYSTICK_16,
-	};
-
-	enum Token
-	{
-		GLFW_MOUSE_CURSOR         = 0x00030001,
-		GLFW_STICKY_KEYS          = 0x00030002,
-		GLFW_STICKY_MOUSE_BUTTONS = 0x00030003,
-		GLFW_SYSTEM_KEYS          = 0x00030004,
-		GLFW_KEY_REPEAT           = 0x00030005,
-		GLFW_AUTO_POLL_EVENTS     = 0x00030006,
-		GLFW_PRESENT              = 0x00050001,
-		GLFW_AXES                 = 0x00050002,
-		GLFW_BUTTONS              = 0x00050003,
-	};
-
-	struct VidMode{
-		int Width, Height;
-	};
-
-	typedef void (*windowsizefun)(int,int);
-	typedef bool (*windowclosefun)(void);
-	typedef void (*windowrefreshfun)(void);
-	typedef void (*mousebuttonfun)(int,int);
-	typedef void (*mouseposfun)(int,int);
-	typedef void (*mousewheelfun)(int);
-	typedef void (*keyfun)(int,int);
-	typedef void (*charfun)(int,int);
 };
+
+template<class T>
+struct BindToOsWindow
+{
+	static void s_WindowSize (void* o, int width, int height)                   { ((T*)o)->WindowSize(width, height); }
+	static void s_MouseButton(void* o, MouseInput::Type b, ButtonState::Type s) { ((T*)o)->MouseButton(b, s); }
+	static void s_MousePos   (void* o, int x, int y, bool r)                    { ((T*)o)->MousePos(x, y, r); }
+	static void s_MouseWheel (void* o, int z)                                   { ((T*)o)->MouseWheel(z); }
+	static void s_Key        (void* o, Key::Type k, ButtonState::Type s)        { ((T*)o)->Key(k, s); }
+	static void s_Char       (void* o, int character, ButtonState::Type s)      { ((T*)o)->Char(character, s); }
+};
+template<class T>
+OsWindow::Callbacks OsWindowCallbacks(T& o)
+{
+	OsWindow::Callbacks c = 
+	{
+		&o,
+		&BindToOsWindow<T>::s_WindowSize,
+		&BindToOsWindow<T>::s_MouseButton,
+		&BindToOsWindow<T>::s_MousePos,
+		&BindToOsWindow<T>::s_MouseWheel,
+		&BindToOsWindow<T>::s_Key,
+		&BindToOsWindow<T>::s_Char
+	};
+	return c;
+}
 
 //------------------------------------------------------------------------------
 }
 //------------------------------------------------------------------------------
+
+//========================================================================
+// This work is derived from "GLFW - An OpenGL framework".
+// GLFW's original copyright notice is reproduced below.
+//------------------------------------------------------------------------
+// GLFW - An OpenGL framework
+// API version: 2.5
+// Author:      Marcus Geelnard (marcus.geelnard at home.se)
+// WWW:         http://glfw.sourceforge.net
+//------------------------------------------------------------------------
+// Copyright (c) 2002-2005 Marcus Geelnard
+//
+// This software is provided 'as-is', without any express or implied
+// warranty. In no event will the authors be held liable for any damages
+// arising from the use of this software.
+//
+// Permission is granted to anyone to use this software for any purpose,
+// including commercial applications, and to alter it and redistribute it
+// freely, subject to the following restrictions:
+//
+// 1. The origin of this software must not be misrepresented; you must not
+//    claim that you wrote the original software. If you use this software
+//    in a product, an acknowledgment in the product documentation would
+//    be appreciated but is not required.
+//
+// 2. Altered source versions must be plainly marked as such, and must not
+//    be misrepresented as being the original software.
+//
+// 3. This notice may not be removed or altered from any source
+//    distribution.
+//
+// Marcus Geelnard
+// marcus.geelnard at home.se
+//========================================================================

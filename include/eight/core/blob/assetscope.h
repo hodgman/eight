@@ -49,8 +49,14 @@ public:
 		return loads == 0xFFFFFFFF;
 	}
 
-	template</*class T, */class F>
+	template<class F>
 	Asset* Load( AssetName n, BlobLoader& blobs, F& factory )//thread safe
+	{
+		return Load( n, blobs, &factory, factory.OnLoadedThread(), &F::s_OnAllocate, &F::s_OnBlobLoaded );
+	}
+		
+	Asset* Load( AssetName n, BlobLoader& blobs, void* factory, ThreadGroup onLoaded, 
+	             BlobLoader::Request::PfnAllocate onAlloc, BlobLoader::Request::PfnComplete onComplete )//thread safe
 	{
 		eiASSERT( !a.Sealed() );
 	//	eiASSERT_CAST(Asset, T);
@@ -71,14 +77,13 @@ public:
 			AssetStorage* ptr = 0;
 			ptr = &m_assets.At(asset);
 			memset(ptr, 0, sizeof(AssetStorage));
-			BlobLoadContext ctx = { this, ptr, &factory/*, eiDEBUG(n.String()) */};
-			bool noFactoryAlloc = true;//TODO - allow factories to allocate the blobs
+			BlobLoadContext ctx = { this, ptr, factory/*, eiDEBUG(n.String()) */};
 			BlobLoader::Request req =
 			{
-				/*onComplete */ factory.OnLoadedThread(),
+				/*onComplete */ onLoaded,
 				/*userData   */ ctx,
-				/*pfnAllocate*/ &F::s_OnAllocate,
-				/*pfnComplete*/ &F::s_OnBlobLoaded,
+				/*pfnAllocate*/ onAlloc,
+				/*pfnComplete*/ onComplete,
 			};
 			ok = blobs.Load( n, req );
 			eiASSERT( ok );//TODO - mark the asset as needing to try to load again next time Load is called with 'n'
@@ -88,22 +93,6 @@ public:
 			return &m_assets.At(asset);
 		eiASSERT( false );
 		return 0;
-	}
-
-	template<class T>
-	T* Find( AssetName n )//thread safe
-	{
-		eiASSERT( Sealed() );
-		eiASSERT_CAST(Asset, T);
-		AssetInfo* value = m_assets.Find(n);
-		if(!value)
-			return m_parent ? m_parent->Find<T>(n) : 0;
-		if( value->type != eiTYPE_OF(T) )
-		{
-			eiASSERT(false);
-			return 0;
-		}
-		return static_cast<T*>(value->ptr);
 	}
 
 	void* Allocate( uint size, uint workerIdx )//dont call directly. used by factories.
@@ -159,16 +148,8 @@ public:
 #endif
 	}
 private:
-/*	static void* OnAllocate(uint numBlobs, u32 blobSize[], u8  blobHint[], BlobLoadContext* ctx)
-	{
-		eiAssertInTaskSection( allocOwner );
-		eiASSERT( numBlobs == 1 );//TODO
-		return ctx->scope->a.Alloc( blobSize[0] );
-	}*/
-
 	AssetScope* m_parent;
 	typedef MpmcHashTable<AssetName, AssetStorage> AssetMap;
-	//typedef StaticHashMap<AssetName, AssetInfo> AssetMap;
 	AssetMap m_assets;
 	Scope& a;
 	ThreadGroup allocOwner;

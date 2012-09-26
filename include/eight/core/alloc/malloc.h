@@ -7,6 +7,8 @@ namespace eight {
 
 void* Malloc( uint size );
 void  Free( void* );
+void* AlignedMalloc( uint size, uint align );
+void  AlignedFree( void* );
 
 class ScopedMalloc : NonCopyable
 {

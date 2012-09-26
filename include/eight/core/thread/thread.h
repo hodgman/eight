@@ -1,9 +1,13 @@
 //------------------------------------------------------------------------------
 #pragma once
 #include <eight/core/noncopyable.h>
+#include <eight/core/types.h>
 namespace eight {
 //------------------------------------------------------------------------------
 class Scope;
+
+uint NumberOfHardwareThreads();
+uint NumberOfPhysicalCores(Scope& temp);
 
 typedef int(*ThreadEntry)(void*, int systemId);
 

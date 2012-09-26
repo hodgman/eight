@@ -1,4 +1,5 @@
 #include <eight/core/thread/tasksection.h>
+#include <eight/core/thread/thread.h>
 #include <eight/core/thread/pool.h>
 #include <eight/core/test.h>
 #include <eight/core/alloc/malloc.h>
@@ -11,7 +12,7 @@ using namespace eight;
 namespace
 {
 	static const int stress = 3;
-	static const int s_workers = NumberOfProcessors()*2;
+	static const int s_workers = NumberOfHardwareThreads()*2;
 	static const int s_tasks = 2;
 	static const int s_itemsPerWorker = 10*stress;
 

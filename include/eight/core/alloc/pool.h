@@ -49,7 +49,7 @@ public:
 		eiASSERT( i  < m_size );
 		T& data = m_data[i];
 		eiASSERT( m_offsNextFreeMinusOne[i] == -1 );
-		eiASSERT( !Enumerable || (m_usedLinks[i].prev != 0xFFFF && m_usedLinks[i].next != 0xFFFF) );
+		eiASSERT( !Enumerable || m_used==i || (m_usedLinks[i].prev != 0xFFFF && m_usedLinks[i].next != 0xFFFF) );
 		eiDEBUG( u8 null[sizeof(T)]= {}; );
 		eiASSERT( dbgNoMemcmp || memcmp(&data, null, sizeof(T))!=0 );
 		return data;

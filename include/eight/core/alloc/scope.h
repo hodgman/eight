@@ -21,8 +21,10 @@ public:
 	template<class T> T* New( uint count, const T& init );  //   c,    d
 	template<class T> T* Alloc();                           //no c, no d
 	template<class T> T* Alloc( uint count );               //no c, no d
-	template<class T> T* Alloc( uint count, const T& init );//   c, no d
+//	template<class T> T* Alloc( uint count, const T& init );//   c, no d
 	                 u8* Alloc( uint size, uint align=0 );
+	typedef void (FnDestructor)(void*);
+	bool OnUnwind( void*, FnDestructor* );
 					 
 	u32 Capacity() const { return alloc.Capacity(); }
 private:
@@ -30,6 +32,8 @@ private:
 	template<class T> static void DestructorCallback(void* p);
 	template<class T> T* AllocObject();
 	template<class T> T* AllocObject( uint count );
+	u8* AllocObject(             uint size, FnDestructor* );
+	u8* AllocObject( uint count, uint size, FnDestructor* );
 
 	const static uint alignment = 16;
 
@@ -38,11 +42,14 @@ private:
 	const u8* base;
 	struct Destructor
 	{
-		void (*fn)(void*);
+		FnDestructor *fn;
 		Destructor* next;
 		void* object;
 	}* destructList;
 	const char* name;
+	
+	void AddDestructors( Destructor*, u8*, uint count, uint size, FnDestructor* );
+	void AddDestructor( Destructor*, u8*, FnDestructor* );
 };
 
 //------------------------------------------------------------------------------

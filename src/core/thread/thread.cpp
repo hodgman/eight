@@ -7,11 +7,39 @@
 namespace eight { namespace internal { void OnThreadExitCleanup(); } }
 
 
-#if eiDEBUG_LEVEL > 0 && !defined(eiPROTECTED_THREADS)
-#define eiPROTECTED_THREADS
-#endif
-
 using namespace eight;
+
+uint eight::NumberOfHardwareThreads()
+{
+    SYSTEM_INFO si;
+    GetSystemInfo( &si );
+    return (uint)si.dwNumberOfProcessors;// TODO - this gives us the number of hardware threads, not the number of processing cores.
+}
+uint eight::NumberOfPhysicalCores(Scope& a)
+{
+	BOOL (WINAPI *getLogicalProcessorInformation)( PSYSTEM_LOGICAL_PROCESSOR_INFORMATION, PDWORD ) 
+		= (BOOL(WINAPI*)(PSYSTEM_LOGICAL_PROCESSOR_INFORMATION,PDWORD)) GetProcAddress( GetModuleHandle("kernel32"), "GetLogicalProcessorInformation" );
+	if( !getLogicalProcessorInformation )
+		return NumberOfHardwareThreads();
+	Scope temp(a,"temp");
+	DWORD bufferSize = 0;
+	DWORD rc = getLogicalProcessorInformation(0, &bufferSize);
+	if( rc == TRUE || GetLastError() != ERROR_INSUFFICIENT_BUFFER || bufferSize == 0 )
+		return NumberOfHardwareThreads();
+	SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer = (SYSTEM_LOGICAL_PROCESSOR_INFORMATION*)temp.Alloc(bufferSize);
+	rc = getLogicalProcessorInformation(buffer, &bufferSize);
+	if( rc == FALSE )
+		return NumberOfHardwareThreads();
+	eiASSERT( (bufferSize/sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION))*sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION) == bufferSize );
+	uint numCores = 0;
+	for( byte* end=((byte*)buffer)+bufferSize; (byte*)buffer < end; ++buffer )
+	{
+		numCores += ( buffer->Relationship == RelationProcessorCore ) ? 1 : 0;
+	}
+	if( numCores == 0 )
+		return NumberOfHardwareThreads();
+	return numCores;
+}
 
 struct ThreadInfo
 {
@@ -39,13 +67,10 @@ static DWORD WINAPI ThreadMain_Internal( void* data )
 	entryInfo.started = true;//signal to main thread that it can destroy the entryInfo struct now
 	int result = entry( arg, (int)info->systemId );
 	info->runnung = false;//signal to main that the thread has finished
-#if !defined(eiPROTECTED_THREADS)
 	internal::OnThreadExitCleanup();
-#endif
 	return (DWORD)result;
 }
 
-#if defined(eiPROTECTED_THREADS)
 namespace { struct TestContext
 {
 	DWORD retVal;
@@ -61,10 +86,10 @@ static DWORD WINAPI ThreadMain_Test( void* data )
 	TestContext ctx = { 0, data };
 	bool didntCrash = RunProtected(&ThreadMain_Test_Internal, &ctx);
 	eiASSERT( didntCrash );
-	internal::OnThreadExitCleanup();
+	if( !didntCrash )
+		internal::OnThreadExitCleanup();
 	return ctx.retVal;
 }
-#endif
 
 Thread::Thread(Scope& a, ThreadEntry entry, void* arg) : pimpl(a.Alloc<ThreadInfo>())
 {
@@ -76,11 +101,10 @@ Thread::Thread(Scope& a, ThreadEntry entry, void* arg) : pimpl(a.Alloc<ThreadInf
 	entryInfo.info = &info;
 	entryInfo.started = false;
 	info.runnung = false;
-#if defined(eiPROTECTED_THREADS)
-	info.handle = CreateThread( 0, 0, &ThreadMain_Test, &entryInfo, 0, &info.systemId );
-#else
-	info.handle = CreateThread( 0, 0, &ThreadMain_Internal, &entryInfo, 0, &info.systemId );
-#endif
+	if( eight::InTest() )
+		info.handle = CreateThread( 0, 0, &ThreadMain_Test, &entryInfo, 0, &info.systemId );
+	else
+		info.handle = CreateThread( 0, 0, &ThreadMain_Internal, &entryInfo, 0, &info.systemId );
 	eiASSERT( info.handle != 0 );
 	if( !info.handle )
 		return;

@@ -53,8 +53,7 @@ public:
 	{
 		int i=-1;
 		Insert( k, i );
-		eiASSERT( i >= 0 );
-		return valueList[i];
+		return At(i);
 	}
 private:
 	void Init(uint capacity);

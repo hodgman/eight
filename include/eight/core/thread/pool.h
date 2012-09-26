@@ -6,8 +6,6 @@ namespace eight {
 class Scope;
 class Atomic;
 
-int NumberOfProcessors();
-
 typedef int(FnPoolThreadEntry)( void* arg, uint threadIndex, uint numThreads, uint systemId );
 
 void StartThreadPool( Scope&, FnPoolThreadEntry*, void* arg, int numWorkers=0 );

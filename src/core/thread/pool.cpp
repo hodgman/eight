@@ -4,16 +4,8 @@
 #include <eight/core/thread/atomic.h>
 #include <eight/core/alloc/scope.h>
 #include <eight/core/alloc/new.h>
-#include <eight/core/os/win32.h>
 
 using namespace eight;
-
-int eight::NumberOfProcessors()
-{
-    SYSTEM_INFO si;
-    GetSystemInfo( &si );
-    return (int)si.dwNumberOfProcessors;// TODO - this gives us the number of hardware threads, not the number of processing cores.
-}
 
 struct PoolThreadEntryInfo
 {
@@ -48,9 +40,10 @@ static int PoolThreadMain( void* data, int systemId )
 void eight::StartThreadPool(Scope& a, FnPoolThreadEntry* entry, void* arg, int numWorkers)
 {
 	if( numWorkers < 1 )
-		numWorkers = max(1, NumberOfProcessors()/2 + 1);
-//		numWorkers = NumberOfProcessors();  
-//		numWorkers = (NumberOfProcessors()+1)/2; 
+		numWorkers = NumberOfPhysicalCores(a);  
+//		numWorkers = max(1, NumberOfPhysicalCores() - 1);
+//		numWorkers = max(1, NumberOfPhysicalCores()/2 + 1);
+//		numWorkers = (NumberOfPhysicalCores()+1)/2; 
 //		numWorkers = 1;
 	Atomic* exit = eiNew(a, Atomic)();
 	PoolThreadEntryInfo info;
