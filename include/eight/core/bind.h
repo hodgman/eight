@@ -1,12 +1,25 @@
 //------------------------------------------------------------------------------
 #pragma once
 #include <eight/core/types.h>
+struct lua_State;
 namespace eight {
 //------------------------------------------------------------------------------
 
+template<class T> struct Reflect;// { static const TypeBinding& Binding() }
+
+// When sending a message, if a value is not known immediately, the index of and byte-offset into a future/return value
+//   can be written instead. All arguments are padded to 32bits to allow this.
+// N.B. the corresponding bit in the parent ArgStore::futureMask should be set when writing these future values.
+struct FutureIndex
+{
+	u16 index;
+	u16 offset;
+};
+
 class CallBuffer;
-typedef void (FnTask)( void* o, void* b, uint size );
-typedef void (FnPushCall)( CallBuffer& q, void* o, void* b, uint s );
+typedef void (FnGeneric)( void* obj, void* args, void* output );
+typedef FutureIndex (FnPush)( CallBuffer& q, void* obj, void* args, uint size );
+typedef int (FnLua)( lua_State* );
 
 struct DataBinding
 {
@@ -18,8 +31,10 @@ struct MethodBinding
 {
 	const char* name;
 	memfuncptr memfuncptr;
-	FnTask* task;
-	FnPushCall* push;
+	FnGeneric* call;
+	FnPush* push;
+	FnLua* luaCall;
+	FnLua* luaPush;
 };
 struct FunctionBinding
 {
@@ -29,6 +44,7 @@ struct FunctionBinding
 
 struct TypeBinding
 {
+	const char*            name;
 	const DataBinding*     data;
 	uint                   dataCount;
 	const MethodBinding*   method;
@@ -37,7 +53,51 @@ struct TypeBinding
 	uint                   functionCount;
 };
 
-template<class T> struct Reflect;
+namespace internal {
+	namespace LuaBindMode
+	{
+		enum Type
+		{
+			NoLuaBind  = 0,
+			LuaCall = 1<<1,
+			LuaPush = 1<<2,
+			LuaCallAndPush = (LuaCall|LuaPush),
+		};
+	}
+}
+
+template<class T, memfuncptr fn, class F> void        CallWrapper(void* user, void* argBlob, void* outBlob);
+template<class T, memfuncptr fn, class F> FutureIndex PushWrapper(CallBuffer& q, void* user, void* argBlob, uint size);
+template<class T, memfuncptr fn, class F> FnGeneric*  GetCallWrapper(F f=0) { return &CallWrapper<T,fn,F>; }
+template<class T, memfuncptr fn, class F> FnPush*     GetPushWrapper(F f=0) { return &PushWrapper<T,fn,F>; }
+namespace lua {
+template<class T, memfuncptr fn, class F> int         LuaCallWrapper(lua_State* luaState);
+template<class T, memfuncptr fn, class F> int         LuaPushWrapper(lua_State* luaState);
+template<int mode> struct GetLuaWrapper
+{
+	template<class T, memfuncptr fn> static FnLua* Call(...) { return 0; }
+	template<class T, memfuncptr fn> static FnLua* Push(...) { return 0; }
+};
+template<> struct GetLuaWrapper<internal::LuaBindMode::LuaCall>
+{
+	template<class T, memfuncptr fn, class F> static FnLua* Call(F f=0) { return &LuaCallWrapper<T,fn,F>; }
+	template<class T, memfuncptr fn, class F> static FnLua* Push(F f=0) { return 0; }
+};
+template<> struct GetLuaWrapper<internal::LuaBindMode::LuaPush>
+{
+	template<class T, memfuncptr fn, class F> static FnLua* Call(F f=0) { return 0; }
+	template<class T, memfuncptr fn, class F> static FnLua* Push(F f=0) { return &LuaPushWrapper<T,fn,F>; }
+};
+template<> struct GetLuaWrapper<internal::LuaBindMode::LuaCallAndPush>
+{
+	template<class T, memfuncptr fn, class F> static FnLua* Call(F f=0) { return &LuaCallWrapper<T,fn,F>; }
+	template<class T, memfuncptr fn, class F> static FnLua* Push(F f=0) { return &LuaPushWrapper<T,fn,F>; }
+};
+/*
+template<int mode, class T, memfuncptr fn, class F> FnLua* GetLuaCallWrapper(F f=0) { return &LuaCallWrapper<T,fn,F>; }
+template<int mode, class T, memfuncptr fn, class F> FnLua* GetLuaPushWrapper(F f=0) { return &LuaPushWrapper<T,fn,F>; }
+*/
+}//namespace lua
 
 //------------------------------------------------------------------------------
 
@@ -45,11 +105,11 @@ template<class T> struct Reflect;
 	const TypeBinding& Reflect##a();													\
 	template<> struct Reflect<a> {														\
 		static const TypeBinding& Binding() { return Reflect##a(); } };					\
-	inline const TypeBinding& Reflect##a()												\
+	const TypeBinding& Reflect##a()														\
 	eiBindStruct_Internal(a)															//
 
 #define eiBindClass( a )																\
-	inline const TypeBinding& Reflect##a()												\
+	const TypeBinding& Reflect##a()														\
 	{ return a::Reflect(); }															\
 	template<> struct Reflect<a> {														\
 		static const TypeBinding& Binding() { return Reflect##a(); } };					\
@@ -60,46 +120,59 @@ template<class T> struct Reflect;
 //------------------------------------------------------------------------------
 #define eiBindStruct_Internal( a )														\
 	{																					\
+		using namespace eight;															\
+		using namespace eight::internal;												\
+		using namespace eight::internal::LuaBindMode;									\
 		typedef a T;																	\
-		const DataBinding*     s_data = 0; uint s_dataSize = 0;	/* defaults */			\
-		const MethodBinding*   s_meth = 0; uint s_methSize = 0;							\
-		const FunctionBinding* s_func = 0; uint s_funcSize = 0;							\
-		eiUNUSED(s_data    );eiUNUSED(s_meth    );eiUNUSED(s_func    );					\
-		eiUNUSED(s_dataSize);eiUNUSED(s_methSize);eiUNUSED(s_funcSize);					\
+		const char* name = #a;															\
+		const DataBinding*     _data = 0; uint _dataSize = 0;	/* defaults */			\
+		const MethodBinding*   _meth = 0; uint _methSize = 0;							\
+		const FunctionBinding* _func = 0; uint _funcSize = 0;							\
+		const LuaBindMode::Type _lua = NoLuaBind;										\
 		{																				//
+# define eiLuaBind( mode )																\
+			const LuaBindMode::Type _lua = (LuaBindMode::Type)(0 | mode);				// /* overwrites name of default */
 # define eiBeginData()																	\
-			const static DataBinding s_data[] = {	/* overwrites name of default */	//
+			const static DataBinding s_data[] = {										//
 #   define eiBindData( a )																\
 				{ #a, (memptr)&T::a, offsetof(T,a), MemberSize(&T::a) },				//
 #   define eiBindReference( a )															\
 				{ #a,             0,             0, sizeof(void*) },					//
 # define eiEndData()																	\
 			};																			\
-			const static uint s_dataSize = ArraySize(s_data);							//
+			_data = s_data;																\
+			_dataSize = eiArraySize(s_data);												//
 
 # define eiBeginMethods()																\
-			const static MethodBinding s_meth[] = {	/* overwrites name of default */	//
+			const static MethodBinding s_meth[] = {										//
+
 #   define eiBindMethod( a )															\
 				{ #a, (memfuncptr)&T::a,												\
-				&MsgFuncs<Tag##a,T>::Call, &MsgFuncs<Tag##a,T>::Push },					//
+				  GetCallWrapper<T,(memfuncptr)&T::a>(&T::a),							\
+				  GetPushWrapper<T,(memfuncptr)&T::a>(&T::a),							\
+				  lua::GetLuaWrapper<_lua&LuaCallAndPush>::Call<T,(memfuncptr)&T::a>(&T::a),		\
+				  lua::GetLuaWrapper<_lua&LuaCallAndPush>::Push<T,(memfuncptr)&T::a>(&T::a) },		//
 # define eiEndMethods()																	\
 			};																			\
-			const static uint s_methSize = ArraySize(s_meth);							//
+			_meth = s_meth;																\
+			_methSize = eiArraySize(s_meth);												//
 
 # define eiBeginFunctions()																\
-			const static DataBinding s_func[] = {	/* overwrites name of default */	//
+			const static DataBinding s_func[] = {										//
 #   define eiBindFunction( a )															\
 				{ #a, (callback)&a },													//
 # define eiEndFunctions()																\
 			};																			\
-			const static uint s_funcSize = ArraySize(s_func);							//
+			_func = s_func;																\
+			_funcSize = eiArraySize(s_func);												//
 
 #define eiEndBind( )																	\
 			const static TypeBinding s_binding =										\
 			{																			\
-				s_data, s_dataSize,														\
-				s_meth, s_methSize,														\
-				s_func, s_funcSize,														\
+				name,																	\
+				_data, _dataSize,														\
+				_meth, _methSize,														\
+				_func, _funcSize,														\
 			};																			\
 			return s_binding;															\
 		}																				\

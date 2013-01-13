@@ -55,7 +55,7 @@ private:
 	u32               m_scratchSize;
 	u8*               m_mem;
 	u8*               m_scratchMem;
-	ThreadGroup       m_initialTask;
+	SingleThread      m_initialTask;
 	Atomic            m_initialized;
 	const u32         m_numAllocs;
 	LoopTasks*        m_tasks;

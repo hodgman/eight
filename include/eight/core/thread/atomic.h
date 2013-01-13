@@ -73,6 +73,48 @@ private:
 };
 eiSTATIC_ASSERT( sizeof(u32) == sizeof(Atomic) );
 
+template<class T>
+class AtomicPtr
+{
+public:
+	explicit AtomicPtr( T* p0 );
+	AtomicPtr( const AtomicPtr& );
+	AtomicPtr& operator=( const AtomicPtr& );
+	AtomicPtr& operator=( T* );
+	operator T*();
+
+	bool SetIfEqual( T* newValue, T* oldValue );///< sets to new if currently equal to old. returns true if succeeded. N.B. can be misleading if ABA problem is applicable.
+private:
+	Atomic data;
+};
+eiSTATIC_ASSERT( sizeof(void*) == sizeof(Atomic) );
+
+template<class T> AtomicPtr<T>::AtomicPtr( T* p ) : data(*(s32*)&value)
+{
+}
+template<class T> AtomicPtr<T>::AtomicPtr( const AtomicPtr& other ) : data(other.data)
+{
+}
+template<class T> AtomicPtr<T>& AtomicPtr<T>::operator=( const AtomicPtr& other )
+{
+	data = other.data;
+	return *this;
+}
+template<class T> AtomicPtr<T>& AtomicPtr<T>::operator=( T* value )
+{
+	data = *(s32*)&value;
+	return *this;
+}
+template<class T> bool AtomicPtr<T>::SetIfEqual( T* newValue, T* oldValue )
+{
+	return data.SetIfEqual( *(s32*)&newValue, *(s32*)&oldValue );
+}
+template<class T> AtomicPtr<T>::operator T*()
+{
+	s32 value = data;
+	return *(T**)&value;
+}
+
 //------------------------------------------------------------------------------
 #include "atomic.hpp"
 } // namespace eight

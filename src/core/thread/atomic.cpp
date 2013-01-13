@@ -13,7 +13,7 @@ uint eight::g_defaultSpin = 500;
 
 #define eiALIGNED( ptr, value ) ( (((u32)ptr) & (value-1)) == 0 )
 
-typedef volatile LONG* AtomicPtr;
+typedef volatile LONG* AtomicIntPtr;
 
 int BusyWait::defaultSpin = 5;
 
@@ -52,24 +52,24 @@ void eight::YieldToOS(bool sleep)
 
 void eight::AtomicWrite(u32* out, u32 in)
 {
-	InterlockedExchange( (AtomicPtr)out, (LONG)in );
+	InterlockedExchange( (AtomicIntPtr)out, (LONG)in );
 }
 
 //N.B. Plain load has acquire semantics on x86, plain store has release semantics
 Atomic::Atomic( s32 i )
 {
 	eiASSERT( eiALIGNED(&value,4) );
-	InterlockedExchange( (AtomicPtr)&value, (LONG)i );
+	InterlockedExchange( (AtomicIntPtr)&value, (LONG)i );
 }
 Atomic::Atomic( const Atomic& other )
 {
 	eiASSERT( eiALIGNED(&value,4) );
-	InterlockedExchange( (AtomicPtr)&value, (LONG)other.value );
+	InterlockedExchange( (AtomicIntPtr)&value, (LONG)other.value );
 }
 Atomic& Atomic::operator=( const Atomic& other )
 {
 	eiASSERT( eiALIGNED(&value,4) );
-	InterlockedExchange( (AtomicPtr)&value, (LONG)other.value );
+	InterlockedExchange( (AtomicIntPtr)&value, (LONG)other.value );
 	return *this;
 }
 Atomic::operator const s32() const
@@ -78,33 +78,33 @@ Atomic::operator const s32() const
 //	_ReadBarrier();
 	s32 i;
 	eiASSERT( eiALIGNED(&i,4) );
-	InterlockedExchange( (AtomicPtr)&i, (LONG)value );
+	InterlockedExchange( (AtomicIntPtr)&i, (LONG)value );
 	return i;
 }
 Atomic& Atomic::operator=( s32 i )
 {
 	eiASSERT( eiALIGNED(&value,4) );
-	InterlockedExchange( (AtomicPtr)&value, (LONG)i );
+	InterlockedExchange( (AtomicIntPtr)&value, (LONG)i );
 	return *this;
 }
 const s32 Atomic::operator++(int)
 {
-	return (s32)InterlockedExchangeAdd( (AtomicPtr)&value, 1 );//Returns original value before addition
+	return (s32)InterlockedExchangeAdd( (AtomicIntPtr)&value, 1 );//Returns original value before addition
 }
 const s32 Atomic::operator--(int)
 {
-	return (s32)InterlockedExchangeAdd( (AtomicPtr)&value, -1 );//Returns original value before subtraction
+	return (s32)InterlockedExchangeAdd( (AtomicIntPtr)&value, -1 );//Returns original value before subtraction
 }
 
 const s32 Atomic::operator++()
 {
 	eiASSERT( eiALIGNED(&value,4) );
-	return InterlockedIncrement( (AtomicPtr)&value );//returns new value after incrementing
+	return InterlockedIncrement( (AtomicIntPtr)&value );//returns new value after incrementing
 }
 const s32 Atomic::operator--()
 {
 	eiASSERT( eiALIGNED(&value,4) );
-	return InterlockedDecrement( (AtomicPtr)&value );//returns new value after decrementing
+	return InterlockedDecrement( (AtomicIntPtr)&value );//returns new value after decrementing
 }
 /*
 void Atomic::Increment( s32& before, s32& after )
@@ -132,17 +132,17 @@ void Atomic::Decrement( s32& before, s32& after )
 void Atomic::operator+=( s32 add )
 {
 	eiASSERT( eiALIGNED(&value,4) );
-	InterlockedExchangeAdd( (AtomicPtr)&value, (LONG)add );//Returns value before subtraction
+	InterlockedExchangeAdd( (AtomicIntPtr)&value, (LONG)add );//Returns value before subtraction
 }
 void Atomic::operator-=( s32 sub )
 { 
 	eiASSERT( eiALIGNED(&value,4) );
-	InterlockedExchangeAdd( (AtomicPtr)&value, -(LONG)sub );//Returns value before subtraction
+	InterlockedExchangeAdd( (AtomicIntPtr)&value, -(LONG)sub );//Returns value before subtraction
 }
 
 bool Atomic::SetIfEqual( s32 newValue, s32 oldValue )
 {
 	eiASSERT( eiALIGNED(&value,4) );
-	s32 result = (s32)InterlockedCompareExchange( (AtomicPtr)&value, (LONG)newValue, (LONG)oldValue );//returns value before the operation
+	s32 result = (s32)InterlockedCompareExchange( (AtomicIntPtr)&value, (LONG)newValue, (LONG)oldValue );//returns value before the operation
 	return (result == oldValue);
 }

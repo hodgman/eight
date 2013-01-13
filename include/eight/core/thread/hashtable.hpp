@@ -1,10 +1,10 @@
 
 inline bool HashTableBase::WaitForValid::operator()() const
 {
-	if( offsNextMinusOne.free == 0xFFFF )//is in bucket chain, not free list
+	if( offsNextMinusOne.free == (s16)0xFFFF )//is in bucket chain, not free list
 		return true;
 	Next t; t.value = ((Atomic&)offsNextMinusOne.value);
-	if( t.free == 0xFFFF )
+	if( t.free == (s16)0xFFFF )
 		return true;
 	return false;
 }
@@ -52,6 +52,7 @@ int THashTableBase<K,V,T>::FindKeyInBucketChain( const K& k, int startNode )
 	{
 		eiASSERT( index < (int)capacity );
 		node = &keyList[index];
+		eiASSERT( node->offsNextMinusOne.free == (s16)0xFFFF );
 		if( T )
 			YieldThreadUntil( WaitForValid(node->offsNextMinusOne) );
 		if( node->key == k )

@@ -1,5 +1,6 @@
 
 add_subdirectory(core)
+add_subdirectory(lua)
 
 if( NOT ${eiMODULE_LIBS} )
   #message( AllLibraries " " ${AllLibraries} )

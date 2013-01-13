@@ -33,7 +33,7 @@ namespace
 	struct TaskTestContext
 	{
 		TaskTestContext() : initialTask(), tasks(), results(), criticalCount(0), alloc() { eiRASSERT( s_workers <= 32 ); }
-		ThreadGroup initialTask;
+		SingleThread initialTask;
 		Atomic initialized;
 		TestTasks* tasks;
 		int* results;

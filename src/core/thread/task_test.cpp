@@ -197,7 +197,7 @@ private:
 			TaskGroupProto fib_group = 
 			{
 				TaskSection(1),
-				fib_array, ArraySize(fib_array),
+				fib_array, eiArraySize(fib_array),
 				0, 0,
 			};
 
@@ -207,8 +207,8 @@ private:
 			TaskGroupProto mul_group = 
 			{
 				TaskSection(),
-				mul_array, ArraySize(mul_array),
-				mul_depend, ArraySize(mul_depend),
+				mul_array, eiArraySize(mul_array),
+				mul_depend, eiArraySize(mul_depend),
 			};
 
 			TaskProto add_task = {&AddTask, &add, sizeof(add) };
@@ -217,8 +217,8 @@ private:
 			TaskGroupProto add_group = 
 			{
 				TaskSection(),
-				add_array, ArraySize(add_array),
-				add_depend, ArraySize(add_depend),
+				add_array, eiArraySize(add_array),
+				add_depend, eiArraySize(add_depend),
 			};
 
 			TaskProto div_task = {&DivTask, &div, sizeof(div) };
@@ -227,17 +227,17 @@ private:
 			TaskGroupProto div_group = 
 			{
 				TaskSection(),
-				div_array, ArraySize(div_array),
-				div_depend, ArraySize(div_depend),
+				div_array, eiArraySize(div_array),
+				div_depend, eiArraySize(div_depend),
 			};
 
 			TaskGroupDepends fib_depend[] = { PreviousFrame(&div_group) };
 			fib_group.dependencies = fib_depend;
-			fib_group.numDependencies = ArraySize(fib_depend);
+			fib_group.numDependencies = eiArraySize(fib_depend);
 
 			TaskGroupProto* groups[] = { &mul_group, &fib_group, &div_group, &add_group };
 			
-			s[i] = MakeSchedule( a, groups, ArraySize(groups) );
+			s[i] = MakeSchedule( a, groups, eiArraySize(groups) );
 		}
 	}
 	
@@ -274,7 +274,7 @@ private:
 
 		int& frame = *thread;
 		eiInfo(NumbersTest, "Work %d", frame);
-		ExecuteSchedules( scratch, frame, s, numSchedules, ThreadGroup() );
+		ExecuteSchedules( scratch, frame, s, numSchedules, SingleThread() );
 		++frame;
 	}
 };
@@ -312,12 +312,12 @@ static void BasicTest(Scope& a)
 	{
 		TaskSection(),
 		groupATasks,
-		ArraySize(groupATasks),
+		eiArraySize(groupATasks),
 		0,
 		0,
 	};
 	TaskGroupProto* groups[] = { &groupA };
-	TaskSchedule s = MakeSchedule( a, groups, ArraySize(groups) );
+	TaskSchedule s = MakeSchedule( a, groups, eiArraySize(groups) );
 
 	BasicTest_Data args = { &a, &s };
 	
@@ -336,8 +336,8 @@ eiTEST( TaskSchedule )
 	Scope scope( stack, "main" );
 	Timer& timer = *eiNew(scope, Timer)();
 	ConcurrentFrames::Type conc[] = { ConcurrentFrames::OneFrame, ConcurrentFrames::TwoFrames, ConcurrentFrames::ThreeFrames };
-	double* totals = eiAllocArray(scope, double, ArraySize(conc));
-	for( int i=0; i!=ArraySize(conc); ++i )
+	double* totals = eiAllocArray(scope, double, eiArraySize(conc));
+	for( int i=0; i!=eiArraySize(conc); ++i )
 		totals[i] = 0;
 	
 	void TestAB(Timer& timer); TestAB(timer);
@@ -351,7 +351,7 @@ eiTEST( TaskSchedule )
 
 		BasicTest(a);
 
-		int idx = i%ArraySize(conc);
+		int idx = i%eiArraySize(conc);
 
 		timer.Reset();
 		NumbersTest(a, conc[idx]);
@@ -361,7 +361,7 @@ eiTEST( TaskSchedule )
 		
 	//	eiInfo(Test, "%d. %.4f", i, time);
 	}
-	for( int i=0; i!=ArraySize(conc); ++i )
+	for( int i=0; i!=eiArraySize(conc); ++i )
 	{
 		eiInfo(Test, "type %d: %.2f", conc[i], totals[i]);
 	}

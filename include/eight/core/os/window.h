@@ -6,7 +6,7 @@ namespace eight {
 
 class Scope;
 class Timer;
-class ThreadGroup;
+class SingleThread;
 
 namespace MouseInput
 {
@@ -140,11 +140,13 @@ public:
 		FnChar*          chars;
 	};
 
-	static OsWindow* New( Scope& a, const ThreadGroup&, int width, int height, WindowMode::Type, const char* title, const Callbacks& );
+	static OsWindow* New( Scope& a, const SingleThread&, int width, int height, WindowMode::Type, const char* title, const Callbacks& );
 
 	bool PollEvents(uint maxMessages=0, const Timer* t=0, float maxTime=0);//returns true if application exit event occurred
 
-	const ThreadGroup& Thread() const;
+	const SingleThread& Thread() const;
+	
+	void ShowMouseCursor(bool b);
 };
 
 template<class T>

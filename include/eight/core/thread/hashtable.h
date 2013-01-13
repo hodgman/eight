@@ -13,7 +13,7 @@ template<class T> struct NativeHash { static u32 Hash(const T&) { return NoHashD
 
 template<class T> struct NativeHash<T*>
 {
-	static u32 Hash(const T* p) { return (*(u32*)&p)>>Pow2Down<sizeof(T)>::value; }
+	static u32 Hash(const T* p) { return (*(u32*)&p)/*>>Pow2Down<sizeof(T)>::value*/; }
 	typedef u32 type;
 };
 
@@ -54,6 +54,25 @@ public:
 		int i=-1;
 		Insert( k, i );
 		return At(i);
+	}
+	//todo - document (lack of) thread safety? dont insert during enumeration.
+	template<class Fn> void ForEach( Fn& fn )
+	{
+		for( u32 bucket=0, end=numBuckets; bucket!=end; ++bucket )
+		{
+			int bucketHeadPlus1 = bucketHeads[bucket];
+			if( bucketHeadPlus1 > 0 )
+			{
+				for( int index = bucketHeadPlus1-1, prev = -1, next; index != prev; prev = index, index = next )
+				{
+					eiASSERT( index < (int)capacity );
+					Node& node = keyList[index];
+					eiASSERT( node.offsNextMinusOne.free == (s16)0xFFFF );
+					fn( node.key, valueList[index] );
+					next = index+node.offsNextMinusOne.chain+1;
+				}
+			}
+		}
 	}
 private:
 	void Init(uint capacity);

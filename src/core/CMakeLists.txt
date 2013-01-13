@@ -6,7 +6,6 @@ AddSourceGroup( core
 core.cpp
 core_test.cpp
 align.cpp
-sort.cpp
 test.cpp
 types.h
 id.h
@@ -63,8 +62,10 @@ blob/types.h
  )
  
 AddSourceGroup( Sort   
+sort/search.h
 sort/radix.h
 sort/radix.hpp
+sort.cpp
  )
  
 AddSourceGroup( Thread 

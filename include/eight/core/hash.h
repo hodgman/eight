@@ -36,6 +36,12 @@ inline u32 Fnv32a( const char* text )
 	}
     return hash;
 }
+inline u16 Fnv16a( const char* text )
+{
+    u32 hash = Fnv32a(text);
+    hash ^= (hash >> 16);
+    return (u16)(hash & 0xFFFF);
+}
 
 //------------------------------------------------------------------------------
 } // namespace eight

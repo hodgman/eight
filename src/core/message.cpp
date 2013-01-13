@@ -1,4 +1,5 @@
 #include <eight/core/message.h>
+#include <eight/core/bind.h>
 #include <eight/core/debug.h>
 #include <eight/core/bit/twiddling.h>
 #include <eight/core/test.h>
@@ -20,8 +21,8 @@ template<>        struct ArgList<Nil> {};
 
 void testy()
 {
-	FutureArg<int> one( 1 );
-	const FutureArg<int>& two = FutureArg<int>( FutureIndex() );
+	MsgArg<int> one( 1 );
+	const MsgArg<int>& two = MsgArg<int>( FutureIndex() );
 	ArgStore<void, int, int, float> a = {0,{one,two,3.0f}};
 	ArgStore<void, int, int> b = {0,{1,2}};
 	ArgStore<void, int> c = {0,{1}};
@@ -44,7 +45,7 @@ void CallBuffer::Insert(FutureCall* data)
 	}
 }
 
-FutureCall* CallBuffer::Push( FnTask* call, void* obj, uint argSize, uint returnSize )
+FutureCall* CallBuffer::Push( FnGeneric* call, void* obj, uint argSize, uint returnSize )
 {
 	FutureCall* data = a.Alloc<FutureCall>();
 	data->call = call;
@@ -79,8 +80,8 @@ namespace {
 	};
 }
 
-eiMessage( Test, DoStuff );
-eiMessage( Test, FooBar );
+//eiMessage( Test, DoStuff );
+//eiMessage( Test, FooBar );
 
 template<class T, class F, class A>
 void Call( F& f, T* t, A* a )
@@ -95,6 +96,7 @@ eiTEST( Message )
 	StackAlloc s(buf,1024);
 	CallBuffer q(s);
 
+	/*todo
 	{
 		ArgStore<int> args = { {0, &ArgStore<int>::Info}, {} };
 		Push_Test_DoStuff( q, &t, &args, sizeof(args) );
@@ -103,9 +105,9 @@ eiTEST( Message )
 		ArgStore<void, int, const float*> args = { {0, &ArgStore<void, int, const float*>::Info}, {42, 0} };
 		Push_Test_FooBar( q, &t, &args, sizeof(ArgStore<void, int, const float*>) );
 
-		CallBlob call = { &args, 0 };
-		Call_Test_FooBar( &t, &call, sizeof(CallBlob) );
+		Call_Test_FooBar( &t, &args, 0 );
 	}
+	*/
 
 //	LuaPush_Test_FooBar( q, &t, 0 );
 
@@ -119,14 +121,15 @@ eiTEST( Message )
 	u8* const returnData = s.Alloc( returnSize );
 	for( FutureCall* i = q.First(), *last = q.Last(); i; i != last ? i = i->next.Ptr() : i = 0 )
 	{
-		CallBlob call = { 0, 0 };
+		//CallBlob call = { 0, 0 };
+		void* callArg = 0, *callOut = 0;
 		bool hasArgs = !!i->args;
 		if( hasArgs )
-			call.arg = &*i->args;
+			callArg = &*i->args;
 		if( hasArgs && i->args->futureMask )
 		{
 			ArgHeader& args = *i->args;
-			call.arg = &args;
+			callArg = &args;
 			u32 futureMask = args.futureMask;
 			args.futureMask = 0;
 			u8* argTuple = (u8*)(&args + 1);
@@ -144,7 +147,7 @@ eiTEST( Message )
 				uint size   = sizes[idx];//and how many bytes to copy it
 				FutureIndex* future = (FutureIndex*)&argTuple[offset];//if the bit was set, assume the item isn't an arg, but a future index
 				uint futureIndex = future->index;
-				uint futureOffset = future->offset; eiUNUSED(futureOffset);//TODO
+				uint futureOffset = future->offset; eiUNUSED(futureOffset);//TODO - offset into the future value
 				eiASSERT( futureIndex < returnCount );
 				eiASSERT( returnOffsets[futureIndex] != 0xFFFFFFFF );
 				u8* returnValue = returnData + returnOffsets[futureIndex];
@@ -159,9 +162,9 @@ eiTEST( Message )
 		if( returnOffset != 0xFFFFFFFF )
 		{
 			returnOffsets[i->returnIndex] = returnOffset;
-			call.out = returnData + returnOffset;
+			callOut = returnData + returnOffset;
 		}
-		i->call( i->obj, &call, sizeof(call) );
+		i->call( i->obj, callArg, callOut );
 	}
 
 }

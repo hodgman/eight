@@ -1,25 +1,9 @@
 //------------------------------------------------------------------------------
 #pragma once
-#include <eight/core/debug.h>
 #include <eight/core/macro.h>
+#include <eight/core/throw.h>
 namespace eight {
 //------------------------------------------------------------------------------
-
-//todo - move to exception.h
-#ifdef _HAS_EXCEPTIONS
-#if _HAS_EXCEPTIONS==0 && defined(eiUSE_EXCEPTIONS)
-#pragma message("Warning: eiUSE_EXCEPTIONS was defined with _HAS_EXCEPTIONS==0")
-#undef eiUSE_EXCEPTIONS
-#endif
-#endif
-
-#ifdef eiUSE_EXCEPTIONS
-	#define eiBEGIN_CATCH_ALL() try{
-	#define eiEND_CATCH_ALL(out)   }catch(...){out = true;}
-#else
-	#define eiBEGIN_CATCH_ALL()
-	#define eiEND_CATCH_ALL(out)
-#endif
 
 #define eiENTRY_POINT( fn )						\
 	int fn( int argc, char** argv );			\

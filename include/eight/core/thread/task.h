@@ -80,9 +80,9 @@ struct TaskSchedule
 };
 
 TaskSchedule  MakeSchedule( Scope& a, TaskGroupProto** groups, uint count, bool sorted=false );//compiles prototypes into schedule and task blobs
-void ExecuteSchedules( Scope& t, uint frame, const TaskSchedule*, uint count,     ThreadGroup resetThread );
-void ExecuteSchedule ( Scope& a, uint frame, const TaskSchedule&,                 ThreadGroup resetThread );
-bool StepSchedule    ( Scope& a, uint frame, const TaskSchedule&, uint* iterator, ThreadGroup resetThread );//repeat until returns false. *iterator should be 0 on the first iteration. *iterator will be modified.
+void ExecuteSchedules( Scope& t, uint frame, const TaskSchedule*, uint count,     SingleThread resetThread );
+void ExecuteSchedule ( Scope& a, uint frame, const TaskSchedule&,                 SingleThread resetThread );
+bool StepSchedule    ( Scope& a, uint frame, const TaskSchedule&, uint* iterator, SingleThread resetThread );//repeat until returns false. *iterator should be 0 on the first iteration. *iterator will be modified.
 //resetThread must be constant per frame.
 //frame increments up to TaskGroup::s_frames.
 //threads are +/- 1 frame apart from each other.

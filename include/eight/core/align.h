@@ -2,14 +2,18 @@
 #pragma once
 namespace eight {
 //------------------------------------------------------------------------------
-#define eiALIGN( type, bytes )		 __declspec( align( bytes ) ) type
+#ifdef _MSC_VER
+# define eiALIGN(bytes)      __declspec( align(bytes) )
+#else
+# define eiALIGN(bytes)		 __attribute__ ((aligned (bytes)))
+#endif
 
-#define eiATOMIC_ALIGNMENT			 16
+#define eiATOMIC_ALIGNMENT			 16 // todo, check build architecture
 
 template<class T, int I>
-struct eiALIGN( AtomicAligned, eiATOMIC_ALIGNMENT )
+struct eiALIGN(eiATOMIC_ALIGNMENT) AtomicAligned
 {
-	eiALIGN( T data[I], eiATOMIC_ALIGNMENT );
+	eiALIGN(eiATOMIC_ALIGNMENT) T data[I];
 };
 //------------------------------------------------------------------------------
 } // namespace eight

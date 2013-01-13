@@ -1,7 +1,5 @@
 //------------------------------------------------------------------------------
 #pragma once
-#include "loader.h"
-#include "stdlib.h"
 #include <eight/core/debug.h>
 #include <eight/core/noncopyable.h>
 namespace eight {
@@ -16,6 +14,7 @@ class TypeInfo {};//TODO
 
 #define eiTYPE_OF(t) TypeInfo()
 
+struct BlobLoadContext;
 struct Asset;
 struct AssetStorage;
 struct RefreshHeap;
@@ -78,6 +77,9 @@ public:
 	void Assign(Handle);//(uint id, u8* data, u32 size);
 	operator const Handle&() const { return m_handle; }
 	u8* Data() { return Asset::Data(); }
+private:
+	friend class AssetScope;
+	AssetStorage* m_next;
 #if defined(eiASSET_REFRESH)
 	void FreeRefreshData();
 	template<class T> bool Refresh( AssetScope& s, AssetName name, BlobLoader& blobs, T& factory, RefreshHeap& a )

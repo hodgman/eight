@@ -81,75 +81,10 @@ bool eight::Assert( const char* e, int l, const char* f, const char* fn )
 	return IsDebuggerAttached();
 }
 
-#if 0
-static TimerImpl g_timer;
-struct PrintMsg { const char* msg; double time; };
-static s32 init=0;
-static u8* buf = (u8*)Malloc(eiMiB(2));
-static const uint s = sizeof(StackAlloc);
-static StackAlloc t( buf+s, eiMiB(2)-s );
-static Scope g( t, "global print" );
-static FifoMpmc<PrintMsg*> f( g, 10*1024 );
-
-struct SortByTime
-{
-	typedef u32 Type;
-	u32 operator()( PrintMsg** in ) const { float t = (float)(*in)->time; return *(u32*)&t; }
-};
-#endif
-
 static Futex futex;
 void eight::Print( const char* msg )
 {
-#if 0
-	if( InPool() || true)
-	{
-		/*futex.Lock();
-		std::cout << msg << std::endl << std::flush;
-		futex.Unlock();*/
-		
-		if( CurrentPoolThread().index == 0 )
-		{
-			std::vector<PrintMsg*> messages;
-			PrintMsg* packet;
-			while( f.Pop(packet) )
-			{
-				messages.push_back(packet);
-			}
-			PrintMsg thisPacket = { msg, g_timer.Elapsed() };
-			messages.push_back(&thisPacket);
-			uint size = messages.size();
-			messages.resize( size * 2 );
-			RadixSort( &messages[0], &messages[size], size, SortByTime() );
-			for( uint i=0; i != size; ++i )
-			{
-				std::cout << messages[i]->msg << std::flush;
-				//printf(messages[i]->msg);
-				if( messages[i] != &thisPacket )
-				{
-					Free((void*)messages[i]->msg);
-					Free(messages[i]);
-				}
-			}
-		}
-		else
-		{
-			uint len = strlen(msg)+1;
-			PrintMsg* packet = (PrintMsg*)Malloc(sizeof(PrintMsg));
-			packet->msg = (char*)Malloc(len);
-			packet->time = g_timer.Elapsed();
-			strncpy((char*)packet->msg, msg, len);
-			if( !f.Push( packet ) )
-			{
-				printf(packet->msg);
-				Free((void*)packet->msg);
-				Free(packet);
-			}
-		}
-	}
-	else
-#endif
-		printf(msg);
+	printf(msg);
 }
 void eight::Printf( const char* fmt, ... )
 {

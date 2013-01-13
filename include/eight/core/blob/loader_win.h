@@ -217,18 +217,20 @@ class BlobLoaderDevWin32 : public BlobLoader
 public:
 	BlobLoaderDevWin32(Scope&, const BlobConfig&, const TaskLoop&);
 	~BlobLoaderDevWin32();
+
 	States Prepare();
-	bool EnqueueLoad(const AssetName& name, const Request& req);//call at any time from any thread
+	bool Load(const AssetName& name, const Request& req);//call at any time from any thread
 	void Update(uint worker);//should be called by all threads
+	void ImmediateDevLoad(const char* path, const ImmediateDevRequest&);
 
 private:
-	enum Pass
+	struct Pass { enum Type
 	{
 		Measure = 0,
 		Alloc,
 		Load,
 		Parse,
-	};
+	};};
 	struct LoadItem
 	{
 		const static int MAX_BLOBS = 3;
@@ -248,6 +250,7 @@ private:
 	};
 
 	const char* FullPath( char* buf, int bufSize, const char* name, int nameLen );
+	const char* FullDevPath( char* buf, int bufSize, const char* name, int nameLen );
 	bool StartLoad(QueueItem& name);
 	bool UpdateLoad(LoadItem& item, uint worker);
 	static VOID WINAPI OnComplete(DWORD errorCode, DWORD numberOfBytesTransfered, OVERLAPPED* overlapped);
@@ -258,9 +261,10 @@ private:
 	LatentMpsc<QueueItem> m_queue;
 	InactiveArray<LoadItem> m_loads;
 	int m_pendingLoads;
-	const char* m_basePath;
-	int m_baseLength;
-	ThreadGroup* m_osUpdateTask;
+	const char* const m_baseDevPath;
+	const char* const m_basePath;
+	const int m_baseLength;
+	SingleThread& m_osUpdateTask;
 	HANDLE m_manifestFile;
 	OVERLAPPED* m_manifestLoad;
 	uint m_manifestSize;

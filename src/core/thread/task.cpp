@@ -128,7 +128,7 @@ TaskSchedule eight::MakeSchedule( Scope& a, TaskGroupProto** groups, uint count,
 			for( uint d=0, end=output.dependencies.count; d != end; ++d )
 			{
 				const TaskGroupDepends& inDepend = input.dependencies[d];
-				eiASSERT( inDepend.group->section.Type() != TaskSectionType::ThreadGroup );
+				eiASSERT( inDepend.group->section.Type() != TaskSectionType::ThreadMask );
 				TaskGroup* blobDepend = 0;
 				for( uint j=0, end=count; j != end && !blobDepend; ++j )
 				{
@@ -178,7 +178,7 @@ static void RunTasks( Scope& a, List<Task>& tasks )
 	}
 }
 
-bool eight::StepSchedule( Scope& a, uint a_frame, const TaskSchedule& data, uint* iterator, ThreadGroup resetThread )
+bool eight::StepSchedule( Scope& a, uint a_frame, const TaskSchedule& data, uint* iterator, SingleThread resetThread )
 {
 	uint frame = a_frame & 3;
 	eiSTATIC_ASSERT( TaskGroup::s_frames == 4 );
@@ -222,9 +222,9 @@ bool eight::StepSchedule( Scope& a, uint a_frame, const TaskSchedule& data, uint
 			eiEndSection( section );
 		}
 		break;
-	case TaskSectionType::ThreadGroup:
+	case TaskSectionType::ThreadMask:
 		{
-			ThreadGroup& section = reinterpret_cast<ThreadGroup&>(group.section[frame]);
+			ThreadMask& section = reinterpret_cast<ThreadMask&>(group.section[frame]);
 			eiBeginSectionThread( section );
 			::RunTasks( a, *group.tasks.Ptr(taskBlob) );
 			eiEndSection( section );
@@ -246,13 +246,13 @@ bool eight::StepSchedule( Scope& a, uint a_frame, const TaskSchedule& data, uint
 	return ++i, i < schedule.groups.count;
 }
 
-void eight::ExecuteSchedule( Scope& a, uint frame, const TaskSchedule& data, ThreadGroup resetThread )
+void eight::ExecuteSchedule( Scope& a, uint frame, const TaskSchedule& data, SingleThread resetThread )
 {
 	uint i = 0;
 	while( StepSchedule( a, frame, data, &i, resetThread ) ) {};
 }
 
-void eight::ExecuteSchedules( Scope& a, uint frame, const TaskSchedule* schedules, uint count, ThreadGroup resetThread )
+void eight::ExecuteSchedules( Scope& a, uint frame, const TaskSchedule* schedules, uint count, SingleThread resetThread )
 {
 	Scope temp( a, "temp" );
 	uint* iterators = eiAllocArray( temp, uint, count );

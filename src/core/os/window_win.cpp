@@ -329,9 +329,9 @@ struct GlfwLibs{
 class OsWindowWin32 : public OsWindow
 {
 public:
-	OsWindowWin32( const ThreadGroup& );
+	OsWindowWin32( const SingleThread& );
 	~OsWindowWin32();
-	const ThreadGroup& Thread() const { return m_thread; }
+	const SingleThread& Thread() const { return m_thread; }
 	void ClearInput( void );
 	void InputKey( int key, int action );
 	void InputChar( int character, int action );
@@ -357,7 +357,7 @@ public:
 	static LRESULT CALLBACK s_WindowCallback( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
 	LRESULT WindowCallback( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
 
-	ThreadGroup m_thread;
+	SingleThread m_thread;
 	GlfwLibs _glfwLibs;
 	GlfwSys _glfwSys;
 	GlfwTimer _glfwTimer;
@@ -367,7 +367,7 @@ public:
 
 HWND GetHwnd(const OsWindow& wnd ) { return ((OsWindowWin32&)wnd)._glfwWin.Wnd; }
 
-OsWindowWin32::OsWindowWin32( const ThreadGroup& t ) : m_thread(t)
+OsWindowWin32::OsWindowWin32( const SingleThread& t ) : m_thread(t)
 {
 	memset( &_glfwLibs, 0, sizeof(GlfwLibs) );
 	memset( &_glfwSys, 0, sizeof(GlfwSys) );
@@ -382,7 +382,7 @@ OsWindowWin32::~OsWindowWin32()
 		CloseWindow();
 }
 
-OsWindow* OsWindow::New( Scope& a, const ThreadGroup& thread, int width, int height, WindowMode::Type mode, const char* title, const Callbacks& c )
+OsWindow* OsWindow::New( Scope& a, const SingleThread& thread, int width, int height, WindowMode::Type mode, const char* title, const Callbacks& c )
 {
 	eiASSERT( thread.Current() );
 	OsWindowWin32* win = eiNew( a, OsWindowWin32 )( thread );
@@ -398,9 +398,13 @@ bool OsWindow::PollEvents(uint maxMessages, const Timer* t, float maxTime)
 {
 	return Downcast(this).PollEvents(maxMessages, t, maxTime);
 }
-const ThreadGroup& OsWindow::Thread() const
+const SingleThread& OsWindow::Thread() const
 {
 	return Downcast(this).Thread();
+}
+void OsWindow::ShowMouseCursor(bool b)
+{
+	Downcast(this).ShowMouseCursor(b);
 }
 
 //========================================================================

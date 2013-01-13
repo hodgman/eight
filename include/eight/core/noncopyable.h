@@ -16,6 +16,8 @@ class NoCreate
 {
 private:
 	NoCreate(){}
+	NoCreate( const NoCreate& );
+	NoCreate& operator=( const NoCreate& );
 };
 
 //------------------------------------------------------------------------------

@@ -31,7 +31,7 @@ typedef char class_::* memptr;
 typedef void (class_::*memfuncptr)(void*);
 typedef void (*callback)(void*);
 
-template <typename T, int N> uint ArraySize(T(&)[N]) { return N; } //TODO - move
+template <typename T, int N> uint eiArraySize(T(&)[N]) { return N; } //TODO - move
 
 struct Nil
 {

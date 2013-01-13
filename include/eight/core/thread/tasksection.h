@@ -27,8 +27,8 @@ eiInfoGroup( TaskSection, false );
 
 	
 ///@define eiBeginSectionTask fo bar
-#define eiBeginSectionTask(	        section )     eiEnterTaskSection_Impl(section, ,         TaskSectionNoLock, )		///< Begin execution of a block that is scheduled by a TaskSection object
-#define eiBeginSectionThread(   section )     eiEnterTaskSection_Impl(section,Group,    TaskSectionGroupLock, )	///< Begin execution of a block that is scheduled by a ThreadGroup object
+#define eiBeginSectionTask(	     section )    eiEnterTaskSection_Impl(section, ,         TaskSectionNoLock, )		///< Begin execution of a block that is scheduled by a TaskSection object
+#define eiBeginSectionThread(    section )    eiEnterTaskSection_Impl(section,Mask,      TaskSectionMaskLock, )	///< Begin execution of a block that is scheduled by a ThreadMask object
 #define eiBeginSectionRedundant( section )    eiEnterTaskSection_Impl(section,Multiple,  TaskSectionNoLock, )		///< Begin execution of a possibly redundant block that is scheduled by a TaskSection object
 #define eiBeginSectionSemaphore( section )    eiEnterTaskSection_Impl(section,Semaphore, TaskSectionLock,				\
                                                                             eiASSERT(_ei_semaphore_lock==Nil());		\
@@ -110,7 +110,7 @@ struct TaskDistribution
 
 struct SectionBlob;
 class TaskSection;
-class ThreadGroup;
+class ThreadMask;
 class Semaphore;
 
 namespace internal
@@ -133,16 +133,16 @@ namespace internal
 	extern ThreadLocalStatic<ThreadId, Tag_ThreadId> _ei_thread_id;
 	extern ThreadLocalStatic<TaskDistribution, Tag_TaskDistribution> _ei_task_distribution;
 	
-	struct TaskSectionGroupLock;
+	struct TaskSectionMaskLock;
 	struct TaskSectionNoLock;
 	struct TaskSectionLock;
 
 	TaskDistribution EnterTaskSection(const TaskSection&, ThreadId, TaskSectionNoLock&);
-	TaskDistribution EnterTaskSectionGroup(const ThreadGroup&, ThreadId, TaskSectionGroupLock&);
+	TaskDistribution EnterTaskSectionMask(const ThreadMask&, ThreadId, TaskSectionMaskLock&);
 	TaskDistribution EnterTaskSectionMultiple(const TaskSection&, ThreadId, TaskSectionNoLock&);
 	TaskDistribution EnterTaskSectionSemaphore(Semaphore&, ThreadId, TaskSectionLock&);
 	void ExitTaskSection(TaskSection&, const TaskDistribution&, ThreadId);
-	void ExitTaskSectionGroup();
+	void ExitTaskSectionMask();
 	void ExitTaskSectionSemaphore(Semaphore&, const TaskDistribution&, ThreadId);
 	bool IsTaskSectionDone(const TaskSection&);
 	bool IsTaskSectionDone(const Semaphore&);
@@ -150,11 +150,11 @@ namespace internal
 	void ResetTaskSection(TaskSection&);
 	void ResetTaskSection(Semaphore&);
 	
-	struct TaskSectionGroupLock
+	struct TaskSectionMaskLock
 	{
 		void Exit(TaskSection& section, const TaskDistribution& dist, ThreadId thread)
 		{
-			ExitTaskSectionGroup();
+			ExitTaskSectionMask();
 		}
 	};
 
@@ -231,7 +231,7 @@ struct TaskSectionType
 	enum Type
 	{
 		TaskSection = 0,
-		ThreadGroup,
+		ThreadMask,
 		Semaphore
 	};
 };
@@ -247,13 +247,13 @@ class TaskSection
 {
 public:
 	TaskSection( int maxThreads=0, u32 threadMask=~0U );
-	explicit TaskSection( const ThreadGroup& );
+	explicit TaskSection( const ThreadMask& );
 
 	bool Current() const;
 	
 	operator SectionBlob() const { eiSTATIC_ASSERT(sizeof(*this)==sizeof(SectionBlob)); return *reinterpret_cast<const SectionBlob*>(this); }
 protected:
-	TaskSection( s32 workersUsed, bool semaphore, bool single );
+	TaskSection( s32 workersUsed, bool semaphore, bool mask );
 	s32 WorkerMask() const { return WorkersUsed(); }
 private:
 	void Init(int maxThreads, u32 threadMask);
@@ -265,11 +265,11 @@ private:
 	s32    workersUsed;//When both vars match, the task has been completed.
 	s32 WorkersUsed () const;
 	bool IsSemaphore() const;
-	bool IsGroup   () const;
+	bool IsMask     () const;
 	friend SectionBlob;
 	friend TaskDistribution internal::EnterTaskSection(const TaskSection&, ThreadId, TaskSectionNoLock&);
 	friend TaskDistribution internal::EnterTaskSectionMultiple(const TaskSection&, ThreadId, TaskSectionNoLock&);
-	friend TaskDistribution internal::EnterTaskSectionGroup(const ThreadGroup&, ThreadId, TaskSectionGroupLock&);
+	friend TaskDistribution internal::EnterTaskSectionMask(const ThreadMask&, ThreadId, TaskSectionMaskLock&);
 	friend TaskDistribution internal::EnterTaskSectionSemaphore(Semaphore&, ThreadId, TaskSectionLock&);
 	friend             void internal::ExitTaskSectionSemaphore(Semaphore&, const TaskDistribution&, ThreadId);
 	friend             void internal::ExitTaskSection(TaskSection&, const TaskDistribution&, ThreadId);
@@ -278,19 +278,32 @@ private:
 };
 
 
-class ThreadGroup : private TaskSection
+class ThreadMask : private TaskSection
 {
-public://todo - refactor - was SingleThread, nee
-	ThreadGroup( int threadIndex=-1 );
-	ThreadGroup( const ThreadGroup& );
+public:
+	ThreadMask( u32 threadMask = 0xFFFFFFFF );
+	ThreadMask( const ThreadMask& );
+
+	bool Current() const;
+	uint GetMask() const;
+
+	operator SectionBlob() const { eiSTATIC_ASSERT(sizeof(*this)==sizeof(SectionBlob)); return *reinterpret_cast<const SectionBlob*>(this); }
+
+	friend TaskDistribution internal::EnterTaskSectionMask(const ThreadMask&, ThreadId, TaskSectionMaskLock&);
+protected:
+	ThreadMask( s32 workersUsed, bool semaphore, bool mask );
+	s32 WorkerMask() const { return TaskSection::WorkerMask(); }
+};
+
+class SingleThread : public ThreadMask
+{
+public:
+	SingleThread( int threadIndex=-1 );
+	SingleThread( const SingleThread& );
 
 	bool Current() const;
 
 	uint WorkerIndex() const;
-
-	operator SectionBlob() const { eiSTATIC_ASSERT(sizeof(*this)==sizeof(SectionBlob)); return *reinterpret_cast<const SectionBlob*>(this); }
-
-	friend TaskDistribution internal::EnterTaskSectionGroup(const ThreadGroup&, ThreadId, TaskSectionGroupLock&);
 };
 
 
@@ -306,7 +319,7 @@ public:
 };
 
 eiSTATIC_ASSERT( sizeof(SectionBlob) == sizeof(TaskSection) );
-eiSTATIC_ASSERT( sizeof(SectionBlob) == sizeof(ThreadGroup) );
+eiSTATIC_ASSERT( sizeof(SectionBlob) == sizeof(ThreadMask) );
 eiSTATIC_ASSERT( sizeof(SectionBlob) == sizeof(Semaphore) );
 
 //------------------------------------------------------------------------------

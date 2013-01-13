@@ -10,9 +10,9 @@ class BlobFactory
 {
 private:
 	friend class AssetScope;
-	ThreadGroup OnLoadedThread()
+	SingleThread AssetHandlingThread()
 	{
-		return ThreadGroup();
+		return SingleThread();
 	}
 	static void* s_OnAllocate(uint numBlobs, uint idx, u32 blobSize, BlobLoadContext* ctx, uint workerIdx)
 	{
@@ -22,12 +22,22 @@ private:
 	{
 		((Self*)(ctx->factory))->OnBlobLoaded( numBlobs, data, size, ctx );
 	}
-	static void GetDefaultBlob( u8*& data, uint& size )
+	typedef void(FnResolve)(void*,Handle);
+	static FnResolve* GetResolve() { if(&Self::Resolve==&BlobFactory<Self>::Resolve) return 0; else return &s_OnResolve; }
+	static void s_OnResolve( void* factory, Handle h )
 	{
-		data = 0;
-		size = 0;
+		((Self*)factory)->Resolve( h );
 	}
+	static void s_OnRelease( void* factory, Handle h )
+	{
+		((Self*)factory)->Release( h );
+	}
+	void Resolve( Handle ) {}
 protected:
+	static void* ScopeAllocate( AssetScope& scope, uint size, uint workerIdx )
+	{
+		return scope.Allocate( size, workerIdx );
+	}
 	void* OnAllocate(uint numBlobs, uint idx, u32 blobSize, BlobLoadContext* ctx, uint workerIdx)
 	{
 		eiASSERT( numBlobs == 1 );//TODO
@@ -39,15 +49,6 @@ protected:
 	void OnBlobLoaded( uint numBlobs, u8* data[], u32 size[], BlobLoadContext* context )
 	{
 		eiASSERT( context && context->factory == this );
-
-		u8* defaultData[1]; u32 defaultSize[1];
-		if(!numBlobs)
-		{
-			eiWarn( "Blob load failed for asset %s", "?"/*context->dbgName*/ );
-			Self::GetDefaultBlob( (data=defaultData)[0], (size=defaultSize)[0] );
-			numBlobs = 1;
-		}
-
 		Self* self = (Self*)this;
 		AssetStorage* asset = context->asset;
 		bool reload = false;
