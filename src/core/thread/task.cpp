@@ -12,7 +12,6 @@ using namespace eight;
 		eiASSERT( ((u8*)in)        >  ((u8*)blob)          );		\
 		eiASSERT( ((u8*)in)+inSize <= ((u8*)blob)+blobSize );		//
 
-
 namespace { struct SortByDepth
 {
 	SortByDepth( HashTable<const TaskGroupProto*, int>& depths ) : depths(depths) {} 
@@ -212,7 +211,7 @@ bool eight::StepSchedule( Scope& a, uint a_frame, const TaskSchedule& data, uint
 		eiWaitForSection( depend.section[f] );
 	}
 
-	switch( group.section[frame].Type() )
+	switch( group.section[frame].Type() )//todo this should be a utility function in tasksection.cpp/h
 	{
 	case TaskSectionType::TaskSection:
 		{

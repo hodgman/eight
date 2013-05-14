@@ -62,7 +62,7 @@ static DWORD WINAPI ThreadMain_Internal( void* data )
 	ThreadEntry entry = entryInfo.entry;
 	void* arg = entryInfo.arg;
 	ThreadInfo* info = entryInfo.info;
-	YieldThreadUntil( WaitForTrue(info->runnung) );//wait until the main thread has filled in the info struct
+	YieldThreadUntil( WaitForTrue(info->runnung), 0, false );//wait until the main thread has filled in the info struct
 //	while( !info->runnung ){}//wait until the main thread has filled in the info struct
 	entryInfo.started = true;//signal to main thread that it can destroy the entryInfo struct now
 	int result = entry( arg, (int)info->systemId );
@@ -93,6 +93,8 @@ static DWORD WINAPI ThreadMain_Test( void* data )
 
 Thread::Thread(Scope& a, ThreadEntry entry, void* arg) : pimpl(a.Alloc<ThreadInfo>())
 {
+	void ClearThreadId();
+	     ClearThreadId();
 	ThreadInfo& info = *(ThreadInfo*)(pimpl);
 
 	ThreadEntryInfo entryInfo;
@@ -109,7 +111,7 @@ Thread::Thread(Scope& a, ThreadEntry entry, void* arg) : pimpl(a.Alloc<ThreadInf
 	if( !info.handle )
 		return;
 	info.runnung = true;//signal the new thread that the info struct has been filled in
-	YieldThreadUntil( WaitForTrue(entryInfo.started) );//wait until the thread has consumed the local entryInfo variable
+	YieldThreadUntil( WaitForTrue(entryInfo.started), 0, false );//wait until the thread has consumed the local entryInfo variable
 }
 
 Thread::~Thread()

@@ -212,16 +212,16 @@ private:
 	Array<Offset<AssetInfo_>>& Info() { return *(Array<Offset<AssetInfo_>>*)NumBlobs().End(names.count); };
 };
 
-class BlobLoaderDevWin32 : public BlobLoader
+class BlobLoaderDevWin32 : public NonCopyable
 {
 public:
 	BlobLoaderDevWin32(Scope&, const BlobConfig&, const TaskLoop&);
 	~BlobLoaderDevWin32();
 
-	States Prepare();
-	bool Load(const AssetName& name, const Request& req);//call at any time from any thread
+	BlobLoader::States Prepare();
+	bool Load(const AssetName& name, const BlobLoader::Request& req);//call at any time from any thread
 	void Update(uint worker);//should be called by all threads
-	void ImmediateDevLoad(const char* path, const ImmediateDevRequest&);
+	void ImmediateDevLoad(const char* path, const BlobLoader::ImmediateDevRequest&);
 
 private:
 	struct Pass { enum Type
@@ -235,7 +235,7 @@ private:
 	{
 		const static int MAX_BLOBS = 3;
 		OVERLAPPED overlapped[MAX_BLOBS];
-		Request request;
+		BlobLoader::Request request;
 		HANDLE file;
 		Atomic pass;
 		Atomic numAllocated;
@@ -246,7 +246,7 @@ private:
 	struct QueueItem
 	{
 		AssetName name;
-		Request request;
+		BlobLoader::Request request;
 	};
 
 	const char* FullPath( char* buf, int bufSize, const char* name, int nameLen );

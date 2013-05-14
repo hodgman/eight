@@ -116,7 +116,7 @@ VOID WINAPI BlobLoaderDevWin32::OnManifestComplete(DWORD errorCode, DWORD number
 	overlapped->hEvent = 0;
 }
 
-bool BlobLoaderDevWin32::Load(const AssetName& name, const Request& req)//call at any time from any thread
+bool BlobLoaderDevWin32::Load(const AssetName& name, const BlobLoader::Request& req)//call at any time from any thread
 {
 	uint frame = m_loop.Frame();
 	QueueItem item = { name, req };
@@ -192,16 +192,25 @@ bool BlobLoaderDevWin32::StartLoad(QueueItem& q)
 
 	AssetManifestDevWin32::AssetInfo info = m_manifest->GetInfo(q.name);
 	if( !info.numBlobs )
+	{
+		eiInfo(BlobLoader, "File missing from manifest %x\n", q.name.hash);
 		goto loadFailure;
+	}
 	char buf[MAX_PATH];
 	const char* path = FullPath( buf, MAX_PATH, &info.fileName->chars, info.fileName->length );
 	if( !path )
+	{
+		eiInfo(BlobLoader, "File with invalid path %x %s\n", q.name.hash, &info.fileName->chars);
 		goto loadFailure;
+	}
 	
 	eiInfo(BlobLoader, "loading %s\n", path);
 	HANDLE file = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY|FILE_FLAG_SEQUENTIAL_SCAN|FILE_FLAG_OVERLAPPED, 0);
 	if(file == INVALID_HANDLE_VALUE)
+	{
+		eiInfo(BlobLoader, "INVALID_HANDLE_VALUE %x %s\n", q.name.hash, &info.fileName->chars);
 		goto loadFailure;
+	}
 
 	eiASSERT( item->pass == Pass::Measure );
 	eiASSERT( item->numAllocated == 0 );
@@ -214,6 +223,7 @@ bool BlobLoaderDevWin32::StartLoad(QueueItem& q)
 	return true;
 
 loadFailure:
+	eiASSERT( false );
 	item->numBuffers = 0;
 	item->file = 0;
 	item->pass = Pass::Parse;
@@ -300,7 +310,7 @@ bool BlobLoaderDevWin32::UpdateLoad(LoadItem& item, uint worker)
 			if( !item.numBuffers )
 			{
 				eiASSERT( !item.file );
-				item.request.pfnComplete(0, 0, 0, &item.request.userData);
+				item.request.pfnComplete(0, 0, 0, item.request.userData, *(BlobLoader*)this);
 				done = true;
 			}
 			else 
@@ -314,7 +324,7 @@ bool BlobLoaderDevWin32::UpdateLoad(LoadItem& item, uint worker)
 				if( buffersDone == item.numBuffers )
 				{
 					CloseHandle( item.file );
-					item.request.pfnComplete(item.numBuffers, (u8**)item.buffers, (u32*)item.sizes, &item.request.userData);
+					item.request.pfnComplete(item.numBuffers, (u8**)item.buffers, (u32*)item.sizes, item.request.userData, *(BlobLoader*)this);
 					done = true;
 				}
 			}
@@ -343,7 +353,7 @@ VOID WINAPI BlobLoaderDevWin32::OnComplete(DWORD errorCode, DWORD numberOfBytesT
 
 //------------------------------------------------------------------------------
 
-void BlobLoaderDevWin32::ImmediateDevLoad(const char* filePath, const ImmediateDevRequest& req)
+void BlobLoaderDevWin32::ImmediateDevLoad(const char* filePath, const BlobLoader::ImmediateDevRequest& req)
 {
 #if defined(eiBUILD_RETAIL)
 	eiFatalError(ImmediateDevLoad in retail build);
@@ -405,24 +415,12 @@ AssetManifestDevWin32::AssetInfo AssetManifestDevWin32::GetInfo(const AssetName&
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-
-bool BlobLoader::Load(const AssetName& n, const Request& req)
-{
-	return ((BlobLoaderDevWin32*)this)->Load(n, req);
-}
-void BlobLoader::Update(uint worker)
-{
-	((BlobLoaderDevWin32*)this)->Update(worker);
-}
-BlobLoader::States BlobLoader::Prepare()
-{
-	return ((BlobLoaderDevWin32*)this)->Prepare();
-}
+eiImplementInterface( BlobLoader, BlobLoaderDevWin32 );
+eiInterfaceConstructor( BlobLoader, (a,b,c), Scope& a, const BlobConfig& b, const TaskLoop& c );
+eiInterfaceFunction( bool, BlobLoader, Load, (a,b), const AssetName& a, const Request& b )
+eiInterfaceFunction( void, BlobLoader, Update, (a), uint a )
+eiInterfaceFunction( BlobLoader::States, BlobLoader, Prepare, () )
 #if !defined(eiBUILD_RETAIL)
-void BlobLoader::ImmediateDevLoad(const char* path, const ImmediateDevRequest& req)
-{
-	((BlobLoaderDevWin32*)this)->ImmediateDevLoad(path, req);
-}
+eiInterfaceFunction( void, BlobLoader, ImmediateDevLoad, (a,b), const char* a, const ImmediateDevRequest& b )
 #endif
-
 //------------------------------------------------------------------------------

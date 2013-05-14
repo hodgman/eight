@@ -144,18 +144,33 @@ AssetScope::State AssetScope::Update(uint worker)
 		return Loading;
 	s32 resolved = m_resolved;
 	s32 userMask = (s32)m_userThreads.GetMask();
-	if( resolved != userMask )
+	eiASSERT( (userMask & 0xFFFF) == userMask );
+	uint pass = resolved >> 16;
+	if( (resolved & 0xFFFF) == userMask )//all threads done
 	{
-		s32 thisMask = 1<<worker;
-		if( (resolved & thisMask) == 0 )
+		if( (int)pass >= m_maxResolveOrder )//more resolve passes required?
+			return Loaded;//nope, all done
+		else//yep
 		{
-			Resolve(worker);
-			m_resolved += thisMask;
+			++pass;
+			while(1)
+			{
+				if( m_resolved.SetIfEqual(pass << 16, resolved) )//start the next pass
+					break;
+				resolved = m_resolved;
+				if( resolved >> 16 == pass )//another thread incremented the pass number
+					break;
+				eiASSERT( (resolved >> 16) < (int)pass );
+			}
 		}
-		if( (resolved|thisMask) != userMask )
-			return Resolving;
 	}
-	return Loaded;
+	s32 thisMask = 1<<worker;
+	if( (resolved & thisMask) == 0 )
+	{
+		Resolve(worker, pass);
+		m_resolved += thisMask;
+	}
+	return Resolving;
 }
 	
 bool AssetScope::IsLoading() const
@@ -169,15 +184,16 @@ AssetScope::~AssetScope()
 	eiASSERT( "todo" );
 	//todo
 }
-void AssetScope::Resolve(uint worker)
+void AssetScope::Resolve(uint worker, uint pass)
 {
 	struct FnResolve
 	{
+		FnResolve(uint pass):pass(pass){}uint pass;
 		void operator()( void* factory, FactoryData& data )
 		{
 			eiASSERT( factory && (s32)data.ready );
 			PfnResolve onResolve = data.onResolve;
-			if( onResolve )
+			if( onResolve && data.resolveOrder == pass )
 			{
 				eiBeginSectionThread( data.factoryThread )//todo same thread mask (rename if so) or another?
 				{
@@ -190,7 +206,18 @@ void AssetScope::Resolve(uint worker)
 			}
 		}
 	};
-	m_factories.ForEach( FnResolve() );
+	m_factories.ForEach( FnResolve(pass) );
+}
+
+static void AtomicMax(Atomic* inout, s32 input)//todo - move
+{
+	s32 value;
+	do 
+	{
+		value = *inout;
+		if( input <= value )
+			return;
+	} while ( inout->SetIfEqual(input, value) );
 }
 
 AssetScope::FactoryData* AssetScope::FindFactoryBucket(void* factory, const FactoryInfo& info)
@@ -202,7 +229,9 @@ AssetScope::FactoryData* AssetScope::FindFactoryBucket(void* factory, const Fact
 	FactoryData& data = m_factories.At(index);
 	if( inserted )
 	{
+		AtomicMax(&m_maxResolveOrder, (int)info.resolveOrder);
 		data.factoryThread = info.factoryThread;
+		data.resolveOrder  = info.resolveOrder;
 		data.onResolve     = info.onResolve;
 		data.onRelease     = info.onRelease;
 		data.assets = 0;
@@ -226,14 +255,16 @@ Asset* AssetScope::Load( AssetName n, BlobLoader& blobs, void* factory, const Fa
 	if( m_assets.Insert(n, asset) )
 	{
 		bool ok;
+		eiASSERT( m_resolved == 0 );
+		/*todo - loads triggered by others loads are an exception...
 #if eiDEBUG_LEVEL > 0
 		s32 i = m_loadsInProgress;
 		eiASSERT( (i & s_loadingLock) == 0 );
 		ok = m_loadsInProgress.SetIfEqual(i+1, i);
 		eiASSERT( ok );
-#else
+#else*/
 		++m_loadsInProgress;
-#endif
+//#endif
 		AssetStorage* ptr = 0;
 		ptr = &m_assets.At(asset);
 		memset(ptr, 0, sizeof(AssetStorage));
@@ -286,7 +317,7 @@ void AssetScope::OnBlobLoaded()
 			eiASSERT( loading == s_loadingLock+1 );
 			bool ok = m_loadsInProgress.SetIfEqual(0, s_loadingLock+1);
 			eiASSERT( ok );
-			m_a.Seal();
+		//	m_a.Seal();
 			ok = m_loadsInProgress.SetIfEqual(0xFFFFFFFF, 0);
 			eiASSERT( ok );
 			done = true;
@@ -305,7 +336,7 @@ void AssetScope::OnBlobLoaded()
 		if( loading == s_loadingLock+1 )
 		{
 			m_loadsInProgress = 0;
-			m_a.Seal();
+		//	m_a.Seal();
 			m_loadsInProgress = 0xFFFFFFFF;
 			done = true;
 		}

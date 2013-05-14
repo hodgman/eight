@@ -9,15 +9,13 @@
 
 using namespace eight;
 
-uint eight::g_defaultSpin = 500;
-
 #define eiALIGNED( ptr, value ) ( (((u32)ptr) & (value-1)) == 0 )
 
 typedef volatile LONG* AtomicIntPtr;
 
-int BusyWait::defaultSpin = 5;
+int BusyWait::defaultSpin = 50000;
 
-eiInfoGroup( Yield, true );
+eiInfoGroup( Yield, false );
 
 void eight::WriteBarrier()
 {

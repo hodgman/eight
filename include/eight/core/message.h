@@ -5,6 +5,7 @@
 #include <eight/core/alloc/stack.h>
 #include <eight/core/macro.h>
 #include <eight/core/bind.h>
+#include <eight/core/tuple.h>
 #include "stddef.h"
 namespace eight {
 //------------------------------------------------------------------------------
@@ -45,12 +46,6 @@ public:
 };
 
 
-
-template<class A=Nil, class B=Nil, class C=Nil>
-                           struct Tuple              { A a; B b; C c; template<class F> void ForEach(F& f) { f(a); f(b); f(c); } const static uint length = 3; };
-template<class A, class B> struct Tuple<  A,  B,Nil> { A a; B b;      template<class F> void ForEach(F& f) { f(a); f(b);       } const static uint length = 2; };
-template<class A>          struct Tuple<  A,Nil,Nil> { A a;           template<class F> void ForEach(F& f) { f(a);             } const static uint length = 1; };
-template<>                 struct Tuple<Nil,Nil,Nil> {                template<class F> void ForEach(F& f) {                   } const static uint length = 0; };
 
 
 template<class T> struct IsPointer           { const static bool value = false; };

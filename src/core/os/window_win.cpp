@@ -384,7 +384,7 @@ OsWindowWin32::~OsWindowWin32()
 
 OsWindow* OsWindow::New( Scope& a, const SingleThread& thread, int width, int height, WindowMode::Type mode, const char* title, const Callbacks& c )
 {
-	eiASSERT( thread.Current() );
+	eiASSERT( thread.IsCurrent() );
 	OsWindowWin32* win = eiNew( a, OsWindowWin32 )( thread );
 	bool ok = win->OpenWindow( width, height, mode, title, c );
 	eiASSERT( ok );

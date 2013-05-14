@@ -1,0 +1,9 @@
+On 05/10/13 8:11 AM, Vadim Shcherbakov wrote:
+--------------------
+Hey, you can use the code as you like, there is no license or any limitations.
+Regards, Vadim
+
+On 05/06/13 8:16 PM, Brooke Hodgman wrote:
+--------------------
+Hi Vadim, I'm really interested in the software occlusion demo on your blog!
+I'd like to make some changes to your ZIP to turn it into a reusable open-source library, but there is no license in the ZIP. Can you give me permission to re-publish your code using a license like MIT, ZLIB, WTFPL, etc?

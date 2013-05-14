@@ -13,7 +13,7 @@ namespace eight {
 class AssetScope : NonCopyable
 {
 	typedef void* (*PfnAllocate)(uint numBlobs, uint idx, u32 blobSize, BlobLoadContext*, uint workerIdx);//called by all threads. Only 1 thread should return non-null per idx (deterministicly). Can return 0xFFFFFFFF to indicate deliberate NULL.
-	typedef void  (*PfnComplete)(uint numBlobs, u8* blobData[], u32 blobSize[], BlobLoadContext*);//called by only 1 thread (onComplete)
+	typedef void  (*PfnComplete)(uint numBlobs, u8* blobData[], u32 blobSize[], BlobLoadContext&, BlobLoader&);//called by only 1 thread (onComplete)
 	typedef void  (*PfnResolve) (void*, Handle);
 	typedef void  (*PfnRelease) (void*, Handle);
 public:
@@ -37,24 +37,26 @@ public:
 		PfnComplete  onComplete;
 		PfnResolve   onResolve;
 		PfnRelease   onRelease;
+		uint         resolveOrder;
 	};
 	template<class F>
 	Asset* Load( AssetName n, BlobLoader& blobs, F& factory )//thread safe
 	{
 		FactoryInfo info = 
 		{
-			factory.AssetHandlingThread(), &F::s_OnAllocate, &F::s_OnBlobLoaded, F::GetResolve(), &F::s_OnRelease
+			factory.AssetHandlingThread(), &F::s_OnAllocate, &F::s_OnBlobLoaded, F::GetResolve(), &F::s_OnRelease, F::GetResolveOrder()
 		};
 		return Load( n, blobs, &factory, info );
 	}
 	Asset* Load( AssetName n, BlobLoader& blobs, void* factory, const FactoryInfo& );//thread safe
 
 private:
-	void Resolve(uint worker);
+	void Resolve(uint worker, uint pass);
 	struct FactoryData
 	{
 		Atomic ready;
 		SingleThread factoryThread;
+		uint         resolveOrder;
 		PfnResolve   onResolve;
 		PfnRelease   onRelease;
 		AtomicPtr<AssetStorage> assets;
@@ -78,6 +80,7 @@ private:
 	ThreadMask   m_userThreads;
 	Atomic m_resolved;
 	Atomic m_loadsInProgress;
+	Atomic m_maxResolveOrder;
 	const static s32 s_loadingLock = 0x80000000;
 };
 

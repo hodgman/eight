@@ -6,6 +6,8 @@
 #include <eight/core/thread/tasksection.h>
 #include <stdio.h>
 #include <cstdarg>
+#include <csignal>
+#include <cstdlib>
 #include <DbgHelp.h>
 #pragma comment(lib, "DbgHelp.lib")
 using namespace eight;
@@ -199,8 +201,14 @@ LONG WINAPI MiniDump_UnhandledExceptionFilter(struct _EXCEPTION_POINTERS* Except
     return retval;
 }
 
+void on_sigabrt (int signum)
+{
+	eiASSERT( false && "Aborted!" );
+}
+
 void eight::InitCrashHandler()
 {
+	signal(SIGABRT, &on_sigabrt);
 	SetUnhandledExceptionFilter(&MiniDump_UnhandledExceptionFilter);
 	SymInitialize(GetCurrentProcess(), 0, TRUE);
 	SymSetOptions( SymGetOptions() | SYMOPT_LOAD_LINES );

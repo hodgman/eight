@@ -2,7 +2,6 @@
 #include <eight/core/debug.h>
 #include <eight/core/alloc/scope.h>
 #include <eight/core/timer/timer.h>
-#include <eight/core/timer/timer_impl.h>
 #include <ctime>
 #include <vector>
 #include <algorithm>
@@ -113,7 +112,7 @@ void TODO_test_sort(Scope& temp)
 	float total1=0, total2=0, total3=0;
 
 	Scope a(temp, "temp");
-	g_t = eiNew(a,Timer);
+	g_t = eiNewInterface(a,Timer);
 	
 #if 0
 	int runs = 1;

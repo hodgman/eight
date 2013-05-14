@@ -60,7 +60,7 @@ eiInfoGroup( TaskSection, false );
 	eiASSERT( eight::internal::IsTaskSectionDone(section) );								//
 
 #define eiAssertInTaskSection(section)														\
-	eiASSERT( true );//TODO - implement this
+	eiASSERT( eight::internal::IsInTaskSection(section) );									//
 
 // Given a number of items in a task, find the range to be executed by this thread
 #define eiDistributeTask( items, begin, end ) 0;											\
@@ -112,6 +112,7 @@ struct SectionBlob;
 class TaskSection;
 class ThreadMask;
 class Semaphore;
+class JobPool;
 
 namespace internal
 {
@@ -122,6 +123,7 @@ namespace internal
 		u32 poolSize;
 		u32 poolMask;
 		Atomic* exit;
+		JobPool* jobs;
 	};
 	inline bool operator==( const ThreadId& a, const ThreadId& b )
 	{
@@ -146,43 +148,66 @@ namespace internal
 	void ExitTaskSectionSemaphore(Semaphore&, const TaskDistribution&, ThreadId);
 	bool IsTaskSectionDone(const TaskSection&);
 	bool IsTaskSectionDone(const Semaphore&);
+	bool IsTaskSectionDone(const SectionBlob&);
+	bool IsInTaskSection(const TaskSection&);//n.b. these don't work in retail builds...
+	bool IsInTaskSection(const Semaphore&);
+	bool IsInTaskSection(const ThreadMask&);
+	bool IsInTaskSection(const SectionBlob&);
 	void ResetTaskSection(SectionBlob&);
 	void ResetTaskSection(TaskSection&);
 	void ResetTaskSection(Semaphore&);
 	
-	struct TaskSectionMaskLock
+	struct TaskSectionLockBase
 	{
+#ifdef eiBUILD_RETAIL
+		inline void Enter(const void*){}
+		inline void Exit(const void*){}
+#else
+		TaskSectionLockBase() : section(), next() {}
+		void Enter(const void*);
+		void Exit(const void*);
+		const void* section;
+		TaskSectionLockBase* next;
+#endif
+	};
+
+	struct TaskSectionMaskLock : TaskSectionLockBase
+	{
+		void Enter(const TaskSection& s) { TaskSectionLockBase::Enter(&s); }
 		void Exit(TaskSection& section, const TaskDistribution& dist, ThreadId thread)
 		{
 			ExitTaskSectionMask();
+			TaskSectionLockBase::Exit(&section);
 		}
 	};
 
-	struct TaskSectionNoLock
+	struct TaskSectionNoLock : TaskSectionLockBase
 	{
 		 TaskSectionNoLock() : entered() {}
 		~TaskSectionNoLock() { eiASSERT( !entered ); }
-		void Entered(bool e) { entered = e; }
+		void Entered(const TaskSection& s, bool e) { entered = e; if(e) TaskSectionLockBase::Enter(&s); }
 		void Exit(TaskSection& section, const TaskDistribution& dist, ThreadId thread)
 		{
 			eiASSERT(entered);
 			ExitTaskSection(section, dist, thread);
 			eiDEBUG( entered = false );
+			TaskSectionLockBase::Exit(&section);
 		}
 	private:
 		bool entered;
 	};
 
-	struct TaskSectionLock
+	struct TaskSectionLock : TaskSectionLockBase
 	{
 		 TaskSectionLock() : locked() {}
 		~TaskSectionLock() { eiASSERT( !locked ); }
-		void Lock() { locked = true; }
+		void Lock(const Semaphore& s) { locked = true; TaskSectionLockBase::Enter(&s); }
 		void Exit(TaskSection& section, const TaskDistribution& dist, ThreadId thread)
 		{
 			eiASSERT(locked);
 			ExitTaskSectionSemaphore((Semaphore&)section, dist, thread);
 			eiDEBUG( locked = false );
+			TaskSectionLockBase::Exit(&section);
 		}
 	private:
 		bool locked;
@@ -249,7 +274,7 @@ public:
 	TaskSection( int maxThreads=0, u32 threadMask=~0U );
 	explicit TaskSection( const ThreadMask& );
 
-	bool Current() const;
+	bool IsCurrent() const;
 	
 	operator SectionBlob() const { eiSTATIC_ASSERT(sizeof(*this)==sizeof(SectionBlob)); return *reinterpret_cast<const SectionBlob*>(this); }
 protected:
@@ -284,7 +309,7 @@ public:
 	ThreadMask( u32 threadMask = 0xFFFFFFFF );
 	ThreadMask( const ThreadMask& );
 
-	bool Current() const;
+	bool IsCurrent() const;
 	uint GetMask() const;
 
 	operator SectionBlob() const { eiSTATIC_ASSERT(sizeof(*this)==sizeof(SectionBlob)); return *reinterpret_cast<const SectionBlob*>(this); }
@@ -301,7 +326,9 @@ public:
 	SingleThread( int threadIndex=-1 );
 	SingleThread( const SingleThread& );
 
-	bool Current() const;
+	static SingleThread CurrentThread();
+
+	bool IsCurrent() const;
 
 	uint WorkerIndex() const;
 };

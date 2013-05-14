@@ -23,11 +23,15 @@ variablestream.h
 variablestream.hpp
 bytestream.h
 bytestream.hpp
+handlemap.h
+handlemap.hpp
 typeinfo.h
 bind.cpp
 bind.h
 message.cpp
 message.h
+tuple.h
+soa.h 
  )
  
 AddSourceGroup( Math
@@ -35,17 +39,27 @@ math/arithmetic.h
 math/tmp.h
 math/matrix.h
 math/vector.h
+math/frustum.h
+math/frustum.ispc
+math/frustum.cpp
  )
  
 AddSourceGroup( Alloc 
 alloc/scope.cpp
 alloc/new.h
+alloc/interface.h
 alloc/stack.h
 alloc/stack.hpp
 alloc/scope.h
 alloc/scope.hpp
 alloc/scopearray.h
+alloc/soapool.h 
 alloc/pool.h 
+alloc/pool.hpp
+alloc/compactpool.h 
+alloc/compactpool.hpp
+alloc/soapool.h
+alloc/soapool.hpp 
 alloc/malloc.h 
  )
  
@@ -72,7 +86,6 @@ AddSourceGroup( Thread
 thread/thread.cpp
 thread/taskloop.cpp
 thread/taskloop.h
-thread/timedloop.cpp
 thread/timedloop.h
 thread/thread.cpp
 thread/threadlocal.cpp
@@ -121,7 +134,6 @@ os/window_impl.h
  
 AddSourceGroup( Timer  
 timer/timer.h
-timer/timer_impl.h
 timer/timer.cpp
 ../../external/timer_lib/timer.c
 ../../external/timer_lib/timer.h

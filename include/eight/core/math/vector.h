@@ -2,6 +2,7 @@
 #pragma once
 #include <math.h>
 #include <eight/core/align.h>
+#include <eight/core/types.h>
 namespace eight {
 //------------------------------------------------------------------------------
 
@@ -24,6 +25,11 @@ struct eiALIGN(16) TVec4
 	const TVec4 operator +( const TVec4& vec ) const
 	{
 		Vec4 result = {{ elements[0]+vec[0], elements[1]+vec[1], elements[2]+vec[2], elements[3]+vec[3] }};
+		return result;
+	}
+	const TVec4 operator -( const TVec4& vec ) const
+	{
+		Vec4 result = {{ elements[0]-vec[0], elements[1]-vec[1], elements[2]-vec[2], elements[3]-vec[3] }};
 		return result;
 	}
 	TVec4& operator +=( const TVec4& vec )
@@ -70,7 +76,7 @@ inline float PlaneDotPoint( const Vec4& plane, const Vec4& point )
 	return Dot(plane, p);
 }
 
-Vec4i operator<( const Vec4& a, const Vec4& b )//_mm_cmplt_ps
+inline Vec4i operator<( const Vec4& a, const Vec4& b )//_mm_cmplt_ps
 {
 	Vec4i result = 
 	{{
@@ -81,7 +87,7 @@ Vec4i operator<( const Vec4& a, const Vec4& b )//_mm_cmplt_ps
 	}};
 	return result;
 }
-Vec4i operator>( const Vec4& a, const Vec4& b )//
+inline Vec4i operator>( const Vec4& a, const Vec4& b )//
 {
 	Vec4i result = 
 	{{
@@ -92,7 +98,7 @@ Vec4i operator>( const Vec4& a, const Vec4& b )//
 	}};
 	return result;
 }
-Vec4i& operator&=( Vec4i& a, const Vec4i& b )//_mm_and_ps
+inline Vec4i& operator&=( Vec4i& a, const Vec4i& b )//_mm_and_ps
 {
 	a[0] &= b[0];
 	a[1] &= b[1];

@@ -321,13 +321,13 @@ inline bool PushGlobalFunction(lua_State* L, const char* name)
 	return true;
 }
 
-template<class Return> typename ReturnType<Return>::Type PCall(lua_State* L)
+template<class Return> typename ReturnType<Return>::Type PCall(lua_State* L, int numArgs)
 {
 	const int hasReturn = TypesEqual<Return,void>::value ? 0 : 1;
-	int returnCode = lua_pcall(L, 1, hasReturn, 0);
+	int returnCode = lua_pcall(L, numArgs, hasReturn, 0);
 	if( returnCode )
 	{
-		const char* errorText = lua_tostring(L, -1);//dodo - print
+		const char* errorText = lua_tostring(L, -1);//todo - print
 		eiASSERT(false);
 		lua_pop(L, 1);
 	}
@@ -403,7 +403,7 @@ typename ReturnType<Return>::Type PCall(lua_State* L, const char* name, const A&
 	if(internal::PushGlobalFunction(L, name))
 	{
 		internal::PushValue<A>(L, a);
-		return internal::PCall<Return>(L);
+		return internal::PCall<Return>(L, 1);
 	}
 	return ReturnType<Return>::Type();
 }

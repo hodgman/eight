@@ -33,7 +33,7 @@ class SimLoop
 		GameLoopArgs<T>& args = *(GameLoopArgs<T>*)cfg->userArgs;
 		if( idx == 0 )
 		{
-			Scope& a = *args.a;
+			Scope& a = *eiNew(thread, Scope)( *args.a, "TaskLoop Main" );//ensure the 'T' is destructed before the thread pool exits
 			cfg->userShared  = T::Create(a, thread, *args.userArgs, loop);
 			cfg->userPrepare = &PrepareGameLoop<T>;
 			cfg->userTask    = &ExecuteGameLoop<T>;

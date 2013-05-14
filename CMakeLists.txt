@@ -32,12 +32,12 @@ if( MSVC )
   # TODO - if building for x64 CPUs, define eiBUILD_X64
   
   # Let us use the standard library (and don't debug it)
-  set( BaseDefines ${BaseDefines} _SCL_SECURE_NO_WARNINGS _CRT_SECURE_NO_DEPRECATE _SECURE_SCL=0 )
+  set( BaseDefines ${BaseDefines} _SCL_SECURE_NO_WARNINGS _CRT_SECURE_NO_DEPRECATE _SECURE_SCL=0 _HAS_TR1=0 )
 
   # Set a build macro for each build type
-  set( DbgDefines ${BaseDefines} eiBUILD_DEBUG  eiDEBUG_LEVEL=2 )
-  set( DevDefines ${BaseDefines} eiBUILD_DEV    eiDEBUG_LEVEL=1 )
-  set( RelDefines ${BaseDefines} eiBUILD_RETAIL eiDEBUG_LEVEL=0 )
+  set( DbgDefines ${BaseDefines} eiBUILD_DEBUG  eiDEBUG_LEVEL=2 _DEBUG )
+  set( DevDefines ${BaseDefines} eiBUILD_DEV    eiDEBUG_LEVEL=1 NDEBUG )
+  set( RelDefines ${BaseDefines} eiBUILD_RETAIL eiDEBUG_LEVEL=0 NDEBUG )
   set_directory_properties( PROPERTIES COMPILE_DEFINITIONS_DEBUG  "${DbgDefines}" )
   set_directory_properties( PROPERTIES COMPILE_DEFINITIONS_DEV    "${DevDefines}" )
   set_directory_properties( PROPERTIES COMPILE_DEFINITIONS_RETAIL "${RelDefines}" )
@@ -88,8 +88,8 @@ if( MSVC )
   # Clone release into Dev
   set( DevFlags "${RelFlags}" )
   
-  # Minimal rebuild
-  set( DevFlags "${DevFlags} /Gm" )
+  # Minimal rebuild, no LTCG
+  set( DevFlags "${DevFlags} /Gm /GL-" )
   
   # LTCG, Omit frame pointers, string pooling
   set( RelFlags "${RelFlags} /GL /Oy /GF" )
@@ -105,7 +105,7 @@ if( MSVC )
   
   # MSVC runtime library
   set( RelFlags "${RelFlags} /MT"  ) # static lib
-  set( DevFlags "${DevFlags} /MD"  ) # shared dll
+  set( DevFlags "${DevFlags} /MT"  ) # static lib UNDONE: /MD shared dll
   set( DbgFlags "${DbgFlags} /MDd" ) # debug dll
   
   #add_definitions( "${DevFlags}" )
@@ -131,7 +131,8 @@ if( MSVC )
 
   # Mark inline headers as a different category/type in the file tree
   #source_group( "Inline Files" REGULAR_EXPRESSION .*\\.hpp )
-  source_group( "CMake" REGULAR_EXPRESSION .*CMake.* )
+  #source_group( "CMake" REGULAR_EXPRESSION .*CMake.* )
+  #source_group( "ISPC Headers" REGULAR_EXPRESSION .*ispc\\.h )
 endif( MSVC )
 
 
@@ -148,7 +149,13 @@ macro( AddSourceGroup name )
   foreach( item ${ARGN} )
     set( var pathTo{$name}${eiCURRENT_LIB_PATH}${item} )
     find_file(${var} NAMES ${item} PATHS ${CMAKE_CURRENT_SOURCE_DIR} ${include}/${eiCURRENT_LIB_PATH} ${SubDirs} NO_DEFAULT_PATH )
-    list( APPEND temp ${${var}} )
+    #message( "${var} = ${${var}}  - ${item} in ${CMAKE_CURRENT_SOURCE_DIR}, ${include}/${eiCURRENT_LIB_PATH}, ${SubDirs}" )
+	string(FIND "${${var}}" ".ispc" isIspc)
+	if(${isIspc} STREQUAL "-1" OR NOT ${eiMODULE_LIBS})
+		list( APPEND temp ${${var}} )
+	else()
+		AppendIspcSrc( temp ${item} ${${var}} )
+	endif()
   endforeach( item ${ARGN} )
   set( SoruceGroup${eiCURRENT_LIB_PATH}${name} ${temp} )
   set( SoruceGroup${eiCURRENT_LIB_PATH}${name} ${temp} PARENT_SCOPE )
@@ -203,6 +210,7 @@ endmacro( EndLibrary )
 macro( AppendSources out lib )
     foreach( group IN LISTS LibrarySoruceGroups${lib} )
       set( groupFiles ${SoruceGroup${lib}${group}} )
+      ProcessGroup( groupFiles )
       if( ${lib} STREQUAL ${group} )
         set( groupName "${lib}" )
         if( ${eiMODULE_LIBS} )
@@ -217,6 +225,75 @@ macro( AppendSources out lib )
       list( APPEND ${out} ${groupFiles} )
     endforeach( group IN LISTS AllLibraries )
 endmacro( AppendSources out lib )
+
+macro( ProcessGroup files )
+  set( newFiles )
+  foreach( file IN LISTS ${files} )
+    string(FIND "${file}" ".ispc" isIspc)
+    if(NOT ${isIspc} STREQUAL "-1" )
+      #set_source_files_properties( ${file} PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE )
+      string(REPLACE "${CMAKE_CURRENT_LIST_DIR}/" "" fileShort ${file} )
+		message( "f1 " ${file} )
+		message( "f2 " ${fileShort} )
+		SetupIspcSrc( ${fileShort} ${file} hdrLocation )
+		list( APPEND newFiles ${hdrLocation} )
+    endif()
+  endforeach( file IN LISTS ${files} )
+  list( APPEND ${files} ${newFiles} )
+endmacro( ProcessGroup )
+
+macro( AddIspcSrc outList srcLocation )
+	set(srcLocation2 ${srcLocation})
+	find_file(srcLocation2 NAMES ${srcLocation} PATHS ${CMAKE_CURRENT_SOURCE_DIR} )
+	get_source_file_property(srcLocation2 ${srcLocation2} LOCATION)
+	AppendIspcSrc( ${outList} ${srcLocation} ${srcLocation2} )
+endmacro( AddIspcSrc )
+
+macro( AppendIspcSrc outList srcLocation srcLocation2 )
+	SetupIspcSrc( ${srcLocation} ${srcLocation2} hdrLocation2 )
+	list( APPEND ${outList} ${srcLocation2} ${hdrLocation2} )
+endmacro( AppendIspcSrc )
+
+macro( SetupIspcSrc srcLocation srcLocation2 outHdrVar )
+	string(FIND "${srcLocation}" "/" lastSlash REVERSE) #just get the file name, strip the path
+	if(NOT ${lastSlash} STREQUAL "-1" )
+		math(EXPR lastSlash ${lastSlash}+1)
+		string(SUBSTRING "${srcLocation}" ${lastSlash} -1 objLocation)
+		#string(SUBSTRING "${srcLocation}" 0 ${lastSlash} currentDir)
+	else()
+		set( objLocation ${srcLocation} )
+		#set( currentDir ${CMAKE_CURRENT_LIST_DIR} )
+	endif()
+	set( currentDir ${CMAKE_CURRENT_LIST_DIR} )
+	string(REPLACE ".ispc" ".obj" objLocation ${objLocation})
+	set(objLocation ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/ispc/${objLocation}) # put the obj in the intermediate dir
+
+	string(REPLACE ".ispc" "_ispc.h" hdrLocation ${srcLocation})
+
+	set( hdrLocation2 ${currentDir}/${hdrLocation} )
+	#get_source_file_property(hdrLocation2 ${hdrLocation} LOCATION)
+	message( "h " ${hdrLocation2} )
+	message( "o " ${objLocation} )
+	message( "c " ${currentDir} )
+
+	ADD_CUSTOM_COMMAND(
+	   OUTPUT ${objLocation} ${hdrLocation2}
+	   COMMAND ${ISPC_EXE} $(ConfigurationName) ${srcLocation2} -o ${objLocation} -h ${hdrLocation} -I ${CMAKE_SOURCE_DIR}/include
+	   IMPLICIT_DEPENDS C ${srcLocation}
+	   DEPENDS ${srcLocation}
+	   MAIN_DEPENDENCY  ${srcLocation}  # this gives the ispc file in MSVC a 'compile' option on the source file
+           WORKING_DIRECTORY ${currentDir}
+	   )
+	
+	set_source_files_properties( ${objLocation} PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE )
+	#set_source_files_properties( ${hdrLocation} PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE )
+	set_source_files_properties( ${hdrLocation2} PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE )
+
+	#source_group( "ISPC Headers" FILES ${hdrLocation2} )
+	
+	set( ${outHdrVar} ${hdrLocation2} )
+endmacro( SetupIspcSrc )
+
 
 macro( SetTargetProperties target_name )
   set_target_properties( ${target_name} PROPERTIES DEBUG_PREFIX dbg )
@@ -318,6 +395,12 @@ macro( AddApp Name Sources )
     endforeach( item ${ARGN} )
   endif( ${eiMODULE_LIBS} )
 endmacro( AddApp )
+
+
+######## ISPC Support ########
+
+set( ISPC_EXE $(SolutionDir)/../external/ispc/ispc.bat )
+#set( ISPC_FLAGS --target=sse2 --arch=x86 )
 
 ######## Project Global Variables ########
 

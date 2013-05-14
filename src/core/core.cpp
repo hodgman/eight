@@ -12,7 +12,6 @@
 #include <string.h>
 #include <malloc.h>
 #include <eight/core/macro.h>
-#include <eight/core/timer/timer_impl.h>
 #include <eight/core/sort/radix.h>
 #include <iostream>
 #include <vector>
@@ -146,61 +145,3 @@ void eight::DebugOutput( int line, const char* file, const char* function, const
 	eiASSERT( len+2 <= 2048 );
 	eight::Print(buffer);
 }
-
-
-
-
-#if 0
-
-Low level
-
-Resources
-Texture
-RenderTarget
-VBO, IBO
-ConstantBuffer
-InstanceBuffer - may be a ConstantBuffer (used in for each instance loop), or a VBO w/ DX9 instancing data.
-
-^^n.b. see that? a render platform choice like whether to put per-instance data into an IBO or a uniform ends up determining the form of our HLSL code.
-           that means that our HLSL should be generated from many fragments. The user wants to write shaders like they're an asset, but the engine
-		   wants them to be code - break up into fragments and reassemble.
-		   When compiling shader permutations, all possible asset-fragment combinations can be determined statically. Engine-fragments change at runtime,
-           so all their permutations must be built.
-
-DrawCalls
-Mesh        - VBO to bind, range of VBO to read, primitive type
-IndexedMesh - VBO to bind, IBO to bind, range of IBO to read, primitive type
-InstancedMesh - IndexedMesh + InstanceBuffer to bind
-
-State
-RasterOutput - MRT + DepthStencil
-MaterialState - Blend, Textures, Uniforms, input vertex attribs
-SceneState - global uniforms (proj matrix etc)
-Viewport/Scissor
-
-High level
-
-pipeline graph (and rt pool)
-shader contexts
-cameras
-viewports/composition
-scene traversal?
-material shaders
-light shaders
-
-
-
-
-CmdBuf
- push( vec<SceneState> )
- push( DrawCall, MaterialState, InstanceState ) : for each State in MaterialState and InstanceState as T(s)
-                                                :     if m_p##T!=&s then push(m_p##T=&s)
-                                                : push( DrawCall )
- ^^ for in-order cmd bufs only -- some cmd-bufs could allow re-sorting, which would delay the state-cache check until after the sort (maybe pushing the vec itself to begin with?) sorting prob not needed
-
- private: push( State ) -- deferred context/command buffer, or very basic vm for DX9PC/GL (unless immediate context, a CRTP)
- private: push( DrawCall ) -- as above
-
-
-
-#endif

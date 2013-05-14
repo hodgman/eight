@@ -5,7 +5,6 @@
 #include <eight/core/alloc/scope.h>
 #include <eight/core/alloc/pool.h>
 #include <eight/core/timer/timer.h>
-#include <eight/core/timer/timer_impl.h>
 #include <stdio.h>
 #include <deque>
 #include <list>
@@ -231,9 +230,13 @@ int test_main( int argc, char** argv )
 	c.Execute();
 
 	Free(scratch);*/
+
+	InitCrashHandler();
 	
 	int errorCount = 0;
 //	eiRUN_TEST( Lua, errorCount );
+	eiRUN_TEST( FluidSim, errorCount );
+	eiRUN_TEST( SphereFrustum, errorCount );
 	eiRUN_TEST( Bind, errorCount );
 	eiRUN_TEST( Message, errorCount );
 	eiRUN_TEST( FifoSpsc, errorCount );
@@ -252,7 +255,7 @@ void test2(void* scratch, uint scratchSize)
 {
 	StackAlloc alloc(scratch, ((u8*)scratch)+scratchSize);
 	Scope a(alloc, "");
-	Timer* timer = eiNew(a, Timer)();
+	Timer* timer = eiNewInterface(a, Timer)();
 	eiInfo(AllocProfile, "########Standard List########");
 	for(int itrSample = 0; itrSample < 3; itrSample++)
 	{

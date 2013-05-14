@@ -52,7 +52,7 @@ void TaskLoop::Run(uint workerIdx, uint numWorkers)
 	DistributeTask( workerIdx, numWorkers, m_memSize/memLine, memBegin, memEnd );
 	eiASSERT(m_mem);
 	StackAlloc stack( &m_mem[memBegin*memLine], (memEnd-memBegin)*memLine );
-	Scope a( stack, "TaskLoop" );
+	Scope a( stack, "TaskLoop Thread" );
 	DistributeTask( workerIdx, numWorkers, m_scratchSize, memBegin, memEnd );
 
 	void* userThread = m_userInitThread( a, workerIdx, *this, &m_config );

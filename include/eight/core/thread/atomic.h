@@ -2,6 +2,7 @@
 #pragma once
 #include <eight/core/types.h>
 #include <eight/core/debug.h>
+#include <eight/core/thread/pool.h>
 namespace eight {
 //------------------------------------------------------------------------------
 
@@ -12,16 +13,24 @@ void ReadWriteBarrier();
 void YieldHardThread();         //Switch to another hardware thread (on the same core)
 void YieldSoftThread();         //Switch to another thread
 void YieldToOS(bool sleep=true);//Switch to the OS kernel. If sleep is true, will block for at least 1ms
-template<class F> void YieldThreadUntil( F&, uint spin=0 );
+template<class F> void YieldThreadUntil( F&, uint spin=0, bool doJobs=true );
 
 struct BusyWait
 {
-	BusyWait() : sleep(), i(), j() {}
+	BusyWait(bool doJobs = true) : sleep(), i(), j()
+	{
+		if( doJobs && InPool() )
+			info = CurrentJobPool();
+		else
+			info.jobs = 0;
+	}
+	JobPoolThread info;
 	uint i, j;
 	bool sleep;
 	static int defaultSpin;
 	template<class F> inline bool Try( F& func, uint spin=0 )
 	{
+		bool inJobPool = info.jobs != 0;
 		spin = !spin ? defaultSpin : spin;
 		if( func() )
 			return true;
@@ -31,13 +40,19 @@ struct BusyWait
 			if( i++ >= spin )
 			{
 				i = 0;
-				YieldToOS( sleep );
-				sleep = !sleep;
+				if( !inJobPool || !info.jobs->RunJob( info.threadIndex, info.threadCount ) )
+				{
+					YieldToOS( sleep );
+					sleep = !sleep;
+				}
 			}
 			else
-				YieldSoftThread();
+			{
+				if( !inJobPool || !info.jobs->RunJob( info.threadIndex, info.threadCount ) )
+					YieldSoftThread();
+			}
 		}
-		else
+		else if( !inJobPool || !info.jobs->RunJob( info.threadIndex, info.threadCount ) )
 			YieldHardThread();
 		return false;
 	}

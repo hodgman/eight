@@ -7,7 +7,7 @@
 #include <eight/core/thread/timedloop.h>
 #include <eight/core/thread/task.h>
 #include <eight/core/typeinfo.h>
-#include <eight/core/timer/timer_impl.h>
+#include <eight/core/timer/timer.h>
 #include <math.h>
 
 using namespace eight;
@@ -334,7 +334,7 @@ eiTEST( TaskSchedule )
 	ScopedMalloc stackMem( stackSize );
 	StackAlloc stack( stackMem, stackSize );
 	Scope scope( stack, "main" );
-	Timer& timer = *eiNew(scope, Timer)();
+	Timer& timer = *eiNewInterface(scope, Timer)();
 	ConcurrentFrames::Type conc[] = { ConcurrentFrames::OneFrame, ConcurrentFrames::TwoFrames, ConcurrentFrames::ThreeFrames };
 	double* totals = eiAllocArray(scope, double, eiArraySize(conc));
 	for( int i=0; i!=eiArraySize(conc); ++i )

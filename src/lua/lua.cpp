@@ -159,7 +159,7 @@ void lua::RegisterType(lua_State* L, const TypeBinding& type)
 		{
 			lua_pushstring(L, method.name);
 			lua_pushcfunction(L, method.luaCall);
-			lua_rawset(L, -4);
+			lua_rawset(L, -4);//table[name] = luaCall
 		}
 		if( method.luaPush )
 		{

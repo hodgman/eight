@@ -27,6 +27,8 @@ public:
 	bool OnUnwind( void*, FnDestructor* );
 					 
 	u32 Capacity() const { return alloc.Capacity(); }
+
+	StackAlloc& InternalAlloc() { return alloc; }
 private:
 	Scope( Scope& );
 	template<class T> static void DestructorCallback(void* p);

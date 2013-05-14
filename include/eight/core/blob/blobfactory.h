@@ -8,6 +8,8 @@ namespace eight {
 template<class Self>
 class BlobFactory
 {
+public:
+	static uint GetResolveOrder() { return 0; }
 private:
 	friend class AssetScope;
 	SingleThread AssetHandlingThread()
@@ -18,9 +20,9 @@ private:
 	{
 		return ((Self*)(ctx->factory))->OnAllocate( numBlobs, idx, blobSize, ctx, workerIdx );
 	}
-	static void s_OnBlobLoaded( uint numBlobs, u8* data[], u32 size[], BlobLoadContext* ctx )
+	static void s_OnBlobLoaded( uint numBlobs, u8* data[], u32 size[], BlobLoadContext& ctx, BlobLoader& loader )
 	{
-		((Self*)(ctx->factory))->OnBlobLoaded( numBlobs, data, size, ctx );
+		((Self*)(ctx.factory))->OnBlobLoaded( numBlobs, data, size, ctx, loader );
 	}
 	typedef void(FnResolve)(void*,Handle);
 	static FnResolve* GetResolve() { if(&Self::Resolve==&BlobFactory<Self>::Resolve) return 0; else return &s_OnResolve; }
@@ -46,22 +48,22 @@ protected:
 		eiASSERT( ctx && ctx->factory == this );
 		return ctx->scope->Allocate( blobSize, workerIdx );
 	}
-	void OnBlobLoaded( uint numBlobs, u8* data[], u32 size[], BlobLoadContext* context )
+	void OnBlobLoaded( uint numBlobs, u8* data[], u32 size[], BlobLoadContext& context, BlobLoader& loader )
 	{
-		eiASSERT( context && context->factory == this );
+		eiASSERT( context.factory == this );
 		Self* self = (Self*)this;
-		AssetStorage* asset = context->asset;
+		AssetStorage* asset = context.asset;
 		bool reload = false;
 		if( asset->Data() )
 		{
 			reload = true;
 			self->Release( *asset );
 		}
-		Handle h = self->Acquire( numBlobs, data, size );
+		Handle h = self->Acquire( numBlobs, data, size, *context.scope, loader );
 		asset->Assign( h );
 		eiASSERT( asset->Data() );
 		if( !reload )
-			context->scope->OnBlobLoaded();
+			context.scope->OnBlobLoaded();
 	}
 };
 

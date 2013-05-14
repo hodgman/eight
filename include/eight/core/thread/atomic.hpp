@@ -1,29 +1,9 @@
 
-extern uint g_defaultSpin;
-template<class F> void YieldThreadUntil( F& func, uint spin )
+//extern uint g_defaultSpin;
+template<class F> void YieldThreadUntil( F& func, uint spin, bool doJobs )
 {
-	if( !spin )
-		spin = g_defaultSpin;
-	bool sleep = false;
-	while( true )
-	{
-		for( uint i=0; i!=spin; ++i )
-		{
-			for( uint j=0; j!=spin; ++j )
-			{
-				if( func() )
-					return;
-				YieldHardThread();
-			}
-			if( func() )
-				return;
-			YieldSoftThread();
-		}
-		if( func() )
-			return;
-		YieldToOS( sleep );
-		sleep = !sleep;
-	}
+	BusyWait spinner(doJobs);
+	while( !spinner.Try(func, spin) ) {}
 }
 
 struct WaitFor1

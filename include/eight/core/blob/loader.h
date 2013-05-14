@@ -3,12 +3,12 @@
 #include "eight/core/debug.h"
 #include "eight/core/types.h"
 #include "eight/core/noncopyable.h"
-#include "eight/core/alloc/new.h"
+#include "eight/core/alloc/interface.h"
 #include "eight/core/thread/tasksection.h"
 namespace eight {
 class Scope;
 class TaskLoop;
-eiInfoGroup(BlobLoader, false);
+eiInfoGroup(BlobLoader, true);
 //------------------------------------------------------------------------------
 struct Asset;
 struct AssetStorage;
@@ -25,13 +25,11 @@ struct BlobLoadContext
 //	eiDEBUG( const char* dbgName );
 };
 
-eiConstructAs( BlobLoader, BlobLoaderDevWin32 );
-
-class BlobLoader : NonCopyable
+class BlobLoader : Interface<BlobLoader>
 {
-protected:
-	BlobLoader(){}
 public:
+	BlobLoader(Scope&, const BlobConfig&, const TaskLoop&);
+
 	enum States
 	{
 		Initializing,
@@ -42,7 +40,7 @@ public:
 	struct Request
 	{
 		typedef void* (*PfnAllocate)(uint numBlobs, uint idx, u32 blobSize, BlobLoadContext*, uint workerIdx);//called by all threads. Only 1 thread should return non-null per idx (deterministicly). Can return 0xFFFFFFFF to indicate deliberate NULL.
-		typedef void  (*PfnComplete)(uint numBlobs, u8* blobData[], u32 blobSize[], BlobLoadContext*);//called by only 1 thread (onComplete)
+		typedef void  (*PfnComplete)(uint numBlobs, u8* blobData[], u32 blobSize[], BlobLoadContext&, BlobLoader&);//called by only 1 thread (onComplete)
 		SingleThread     onComplete;
 		BlobLoadContext userData;
 		PfnAllocate     pfnAllocate;
@@ -62,6 +60,8 @@ public:
 #if !defined(eiBUILD_RETAIL)
 	void ImmediateDevLoad(const char* path, const ImmediateDevRequest&);
 #endif
+private:
+	~BlobLoader();
 };
 
 struct BlobLoaderInitialized

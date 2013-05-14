@@ -55,6 +55,7 @@ struct Handle
 struct AssetName
 {
 	u32 hash;
+	explicit AssetName(u32 name) : hash(name) {}
 	AssetName(const char* n=0);
 	bool operator==(const AssetName& o) const { return hash == o.hash; }
 	friend struct NativeHash<AssetName>;

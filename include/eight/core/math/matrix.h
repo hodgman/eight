@@ -46,7 +46,7 @@ struct eiALIGN(16) Mat4
 	static const Mat4 Scale( float x, float y, float z );
 };
 
-const Mat4 operator*( const Mat4& lhs, const Mat4& rhs )
+inline const Mat4 operator*( const Mat4& lhs, const Mat4& rhs )
 {
 	Mat4 result = {{
 		lhs * rhs[0],

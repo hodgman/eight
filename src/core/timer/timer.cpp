@@ -2,16 +2,29 @@
 #include <eight/core/test.h>
 #include <eight/core/debug.h>
 #include <eight/core/alloc/scope.h>
-#include <eight/core/alloc/new.h>
-#include <eight/core/timer/timer_impl.h>
+#include <eight/core/timer/timer.h>
 #include <eight/core/thread/atomic.h>
-
-#define eiFILE_DERIVED_CLASS TimerImpl
-#define eiDowncast      (*static_cast<eiFILE_DERIVED_CLASS*>(this))
-#define eiDowncastConst (*static_cast<const eiFILE_DERIVED_CLASS*>(this))
+#include <timer_lib/timer.h>
 
 using namespace eight;
 //------------------------------------------------------------------------------
+
+class TimerImpl
+{
+public:
+	TimerImpl();
+	~TimerImpl();
+	void Reset();
+	double Elapsed() const;
+	double Elapsed(bool reset);
+	timer data;
+};
+
+eiImplementInterface( Timer, TimerImpl );
+eiInterfaceConstructor( Timer, () );
+eiInterfaceFunction(      void, Timer, Reset, () );
+eiInterfaceFunctionConst( double, Timer, Elapsed, () );
+eiInterfaceFunction(      double, Timer, Elapsed, (a), bool a );
 
 static eight::Atomic g_TimerSystemInit;
 
@@ -47,21 +60,18 @@ TimerImpl::~TimerImpl()
 	ShutdownSystem();
 }
 
-void Timer::Reset()
+void TimerImpl::Reset()
 {
-	timer& data = eiDowncast.data;
 	timer_reset( &data );
 }
 
-double Timer::Elapsed() const
+double TimerImpl::Elapsed() const
 {
-	const timer& data = eiDowncastConst.data;
 	return timer_elapsed( (timer*)&data, 0 );
 } 
 
-double Timer::Elapsed(bool reset)
+double TimerImpl::Elapsed(bool reset)
 {
-	timer& data = eiDowncast.data;
 	return timer_elapsed( &data, (int)reset );
 }
 
