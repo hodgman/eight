@@ -45,7 +45,8 @@ void eight::YieldSoftThread()
 void eight::YieldToOS(bool sleep)
 {
 	eiInfo(Yield, sleep?"Sleep(1)":"Sleep(0)");
-	Sleep(sleep ? DWORD(1) : DWORD(0));
+//	Sleep(sleep ? DWORD(1) : DWORD(0));
+	SleepEx(sleep ? DWORD(1) : DWORD(0), TRUE);
 }
 
 void eight::AtomicWrite(u32* out, u32 in)

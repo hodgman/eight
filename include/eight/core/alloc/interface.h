@@ -14,6 +14,14 @@ private:
 	~Interface();
 };
 
+template<class T>
+class Implementation : NonCopyable
+{
+public:
+	operator T&()       { return *(T*)this; }
+	operator T&() const { return *(T*)this; }
+};
+
 #define eiImplementInterface( interface, implementation )													\
 	uint Interface<interface>::Instance_Size()            { return sizeof(implementation); }				\
 	void Interface<interface>::Instance_Destruct(void* p) { ((implementation*)p)->~implementation(); }		\

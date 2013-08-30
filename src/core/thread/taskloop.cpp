@@ -11,6 +11,8 @@ namespace eight
 		TaskSection startedThisFrame;
 		Semaphore   prepareNextFrame;
 		void*       userTask;
+		void*       interrupt;
+		TaskSection completedInterrupt;
 	};
 }
 
@@ -29,20 +31,24 @@ TaskLoop::TaskLoop( Scope& a, void* user, FnUserInitThread i,
 	m_config.userShared = 0;
 	m_config.userTask = 0;
 	m_config.userPrepare = 0;
+	m_config.userInterrupt = 0;
 	m_userInitThread = i;
 	m_scratchBuffers = 0;
 }
 
 void TaskLoop::Run(uint workerIdx, uint numWorkers)
 {
-	for( uint i=0, end=m_numAllocs; i!=end; ++i )
+	if( workerIdx == 0 )
 	{
-		new(&m_tasks[i])LoopTasks;
-		if( m_numAllocs == 1 )
+		for( uint i=0, end=m_numAllocs; i!=end; ++i )
 		{
-			eiSTATIC_ASSERT( sizeof(Semaphore) >= sizeof(Atomic) );
-			Atomic& gate = *(Atomic*)&m_tasks[i].prepareNextFrame;
-			gate = 0;
+			new(&m_tasks[i])LoopTasks;
+			if( m_numAllocs == 1 )
+			{
+				eiSTATIC_ASSERT( sizeof(Semaphore) >= sizeof(Atomic) );
+				Atomic& gate = *(Atomic*)&m_tasks[i].prepareNextFrame;
+				gate = 0;
+			}
 		}
 	}
 	eiASSERT( workerIdx == internal::_ei_thread_id->index );
@@ -68,6 +74,16 @@ void TaskLoop::Run(uint workerIdx, uint numWorkers)
 		LoopTasks& prevTasks = m_tasks[prevAllocId];
 		eiBeginSectionTask( tasks.startedThisFrame );
 		eiEndSection( tasks.startedThisFrame );
+
+		if( tasks.interrupt )
+		{
+			eiASSERT( m_config.userInterrupt );
+			eiWaitForSection( tasks.startedThisFrame );
+			m_config.userInterrupt( a, tasks.interrupt, m_config.userShared, workerIdx, numWorkers );
+			eiBeginSectionTask( tasks.completedInterrupt );
+			eiEndSection( tasks.completedInterrupt );
+			eiWaitForSection( tasks.completedInterrupt );
+		}
 
 	/*	if( m_numAllocs == 3 )
 		{
@@ -205,7 +221,9 @@ inline void TaskLoop::PrepareFrame(Scope& a, uint workerIdx, uint frame, void* u
 	eiResetTaskSection( tasks.startedThisFrame );
 	if( m_numAllocs != 1 )
 		eiResetTaskSection( tasks.prepareNextFrame );
-	tasks.userTask = m_config.userPrepare(a, scratch, m_config.userShared, userThread, prevTask);
+	tasks.interrupt = 0;
+	eiResetTaskSection( tasks.completedInterrupt );
+	tasks.userTask = m_config.userPrepare(a, scratch, m_config.userShared, userThread, prevTask, &tasks.interrupt);
 }
 Scope& TaskLoop::GetScratch(uint allocId, uint thread)
 {

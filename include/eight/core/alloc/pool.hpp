@@ -38,7 +38,8 @@ void PoolBase<Enumerable>::Dbg_ValidateIndex(uint i)
 {
 	eiASSERT( i  < m_size );
 	eiASSERT( m_offsNextFreeMinusOne[i] == -1 );
-	eiASSERT( !Enumerable || m_used==i || (m_usedLinks[i].prev != 0xFFFF && m_usedLinks[i].next != 0xFFFF) );
+//	eiASSERT( !Enumerable || m_used==i || (m_usedLinks[i].prev != 0xFFFF && m_usedLinks[i].next != 0xFFFF) );
+	eiASSERT( !Enumerable || m_used==i || (m_usedLinks[i].prev != 0xFFFF || m_usedLinks[i].next != 0xFFFF) );
 }
 
 template<bool Enumerable>

@@ -47,6 +47,7 @@ class THashTableBase : HashTableBase
 public:
 	THashTableBase( Scope& a, uint capacity );
 	THashTableBase( Scope& a, uint capacity, uint numBuckets );
+	bool Find( const K& k, int& outIndex );
 	bool Insert( const K& k, int& outIndex );
 	V& At( int i ) { eiASSERT(i>=0 && i<(int)capacity); return valueList[i]; }
 	V& operator[]( const K& k )
@@ -69,6 +70,25 @@ public:
 					Node& node = keyList[index];
 					eiASSERT( node.offsNextMinusOne.free == (s16)0xFFFF );
 					fn( node.key, valueList[index] );
+					next = index+node.offsNextMinusOne.chain+1;
+				}
+			}
+		}
+	}
+	template<class Fn> void ForEachBreak( Fn& fn )
+	{
+		for( u32 bucket=0, end=numBuckets; bucket!=end; ++bucket )
+		{
+			int bucketHeadPlus1 = bucketHeads[bucket];
+			if( bucketHeadPlus1 > 0 )
+			{
+				for( int index = bucketHeadPlus1-1, prev = -1, next; index != prev; prev = index, index = next )
+				{
+					eiASSERT( index < (int)capacity );
+					Node& node = keyList[index];
+					eiASSERT( node.offsNextMinusOne.free == (s16)0xFFFF );
+					if( fn( node.key, valueList[index] ) )
+						return;
 					next = index+node.offsNextMinusOne.chain+1;
 				}
 			}

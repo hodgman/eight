@@ -17,14 +17,16 @@ eiInfoGroup( TaskLoop, false );
 class TaskLoop
 {
 public:
+	typedef void (FnInterrupt      )(Scope& a, void* interrupt, void* shared, uint worker, uint numWorkers);
 	typedef void (FnUserTask       )(Scope& a, Scope& scratch, void* shared, void* thread, void* preparedTask, uint worker);
-	typedef void*(FnUserPrepareTask)(Scope& a, Scope& scratch, void* shared, void* thread, const void* prevTask);//return null to end loop
+	typedef void*(FnUserPrepareTask)(Scope& a, Scope& scratch, void* shared, void* thread, const void* prevTask, void** interrupt);//return null to end loop
 	struct Config
 	{
 		void*              userArgs;
 		void*              userShared;
 		FnUserPrepareTask* userPrepare;
 		FnUserTask*        userTask;
+		FnInterrupt*       userInterrupt;
 	};
 	typedef void*(FnUserInitThread)(Scope& thread, uint idx, TaskLoop&, Config*);
 

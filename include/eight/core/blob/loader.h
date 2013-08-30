@@ -22,7 +22,7 @@ struct BlobLoadContext
 	AssetScope* scope;
 	AssetStorage* asset;
 	void* factory;
-//	eiDEBUG( const char* dbgName );
+	eiDEBUG( const char* dbgFactoryName );
 };
 
 class BlobLoader : Interface<BlobLoader>
@@ -47,7 +47,7 @@ public:
 		PfnComplete     pfnComplete;
 	};
 	bool Load(const AssetName&, const Request&);//call at any time from any thread. Can fail if internal queues are full and if so should try again next frame.
-	void Update(uint worker);//should be called by all threads each frame
+	void Update(uint worker, bool inRefreshInterrupt=false);//should be called by all threads each frame
 
 
 	struct ImmediateDevRequest

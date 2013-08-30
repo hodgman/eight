@@ -19,9 +19,15 @@ using namespace eight;
 
 
 //-------------------------------------------------------------------
+#if eiDEBUG_LEVEL != 0
+static const int stress = 1;
+const static int s_scheduleStressA = 1;
+const static int s_scheduleStressB = 1;
+#else
 static const int stress = 6;
 const static int s_scheduleStressA = 10;
 const static int s_scheduleStressB = 10;
+#endif
 // The test process generates a series of fibonacci numbers and performs
 // several transforms on that series.
 //
@@ -245,6 +251,7 @@ private:
 	typedef NumbersTest_Data Args;
 	typedef int ThreadData;
 	typedef void FrameData;
+	typedef void InterruptData;
 
 	static NumbersTest_Data* Create(Scope& a, Scope& thread, Args& args, const TaskLoop&)
 	{
@@ -260,7 +267,7 @@ private:
 		*frame = 0;
 		return frame;
 	}
-	FrameData* Prepare(Scope&, Scope&, ThreadData* thread, FrameData*)
+	FrameData* Prepare(Scope&, Scope&, ThreadData* thread, FrameData*, void**)
 	{
 		int& frame = *thread;
 		eiInfo(NumbersTest, "Prep %d", frame);

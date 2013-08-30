@@ -120,6 +120,13 @@ namespace WindowMode
 	};
 }
 
+struct OsWindowArgs
+{
+	int width, height;
+	WindowMode::Type mode;
+	const char* title;
+};
+
 class OsWindow : NonCopyable
 {
 public:
@@ -140,13 +147,18 @@ public:
 		FnChar*          chars;
 	};
 
-	static OsWindow* New( Scope& a, const SingleThread&, int width, int height, WindowMode::Type, const char* title, const Callbacks& );
+	uint Width() const;
+	uint Height() const;
+
+	static OsWindow* New( Scope& a, const SingleThread&, const OsWindowArgs&, const Callbacks& );
 
 	bool PollEvents(uint maxMessages=0, const Timer* t=0, float maxTime=0);//returns true if application exit event occurred
 
 	const SingleThread& Thread() const;
 	
 	void ShowMouseCursor(bool b);
+
+	void Close();
 };
 
 template<class T>

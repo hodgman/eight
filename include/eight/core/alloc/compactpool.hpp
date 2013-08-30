@@ -18,7 +18,7 @@ CompactPool<T>::~CompactPool()
 }
 
 template<class T>
-T& CompactPool<T>::operator[]( int handle )
+T& CompactPool<T>::operator[]( Id handle )
 {
 	eiDEBUG( m_pool.Dbg_ValidateIndex(handle) );
 	uint physical = m_map.ToPhysical(handle);
@@ -27,15 +27,15 @@ T& CompactPool<T>::operator[]( int handle )
 }
 
 template<class T>
-int CompactPool<T>::Handle(const T& object)
+typename CompactPool<T>::Id CompactPool<T>::Handle(const T& object)
 {
 	eiASSERT( &object >= m_data && &object < m_data+m_pool.Size() );
 	int physical = &object-m_data;
-	return m_map.ToHandle(physical);
+	return Id(m_map.ToHandle(physical));
 }
 
 template<class T>
-int CompactPool<T>::Alloc(const T& data)
+typename CompactPool<T>::Id CompactPool<T>::Alloc(const T& data)
 {
 	int handle = m_pool.Alloc();
 	if( handle < 0 )
@@ -46,26 +46,27 @@ int CompactPool<T>::Alloc(const T& data)
 		new(t) T(data);
 	else
 		*t = data;
-	return handle;
+	return Id(handle);
 }
 
 template<class T>
-int CompactPool<T>::Alloc()
+typename CompactPool<T>::Id CompactPool<T>::Alloc()
 {
 	int handle = m_pool.Alloc();
-	if( handle < 0 )
-		return -1;
-	uint physical = m_map.AllocHandleToPhysical(handle);
-	if( s_NonPod )
+	if( handle >= 0 )
 	{
-		T* t = &m_data[physical];
-		new(t) T;
+		uint physical = m_map.AllocHandleToPhysical(handle);
+		if( s_NonPod )
+		{
+			T* t = &m_data[physical];
+			new(t) T;
+		}
 	}
-	return handle;
+	return Id(handle);
 }
 
 template<class T>
-void CompactPool<T>::Release( int handle )
+void CompactPool<T>::Release( Id handle )
 {
 	eiDEBUG( m_pool.Dbg_ValidateIndex(handle) );
 	m_pool.Release( handle );
@@ -93,4 +94,23 @@ void CompactPool<T>::Clear()
 	}
 	m_map.Clear(Capactiy());
 	m_pool.Clear();
+}
+
+template<class T> template<class Fn>
+void CompactPool<T>::ForEach(Fn& fn)
+{
+	T* data = m_data;
+	for( uint i=0, end=m_map.Size(); i != end; ++i )
+	{
+		fn(Id(m_map.ToHandle(i)), data[i]);
+	}
+}
+template<class T> template<class Fn>
+void CompactPool<T>::ForEach(Fn& fn) const
+{
+	const T* data = m_data;
+	for( uint i=0, end=m_map.Size(); i != end; ++i )
+	{
+		fn(Id(m_map.ToHandle(i)), data[i]);
+	}
 }

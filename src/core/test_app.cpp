@@ -235,8 +235,8 @@ int test_main( int argc, char** argv )
 	
 	int errorCount = 0;
 //	eiRUN_TEST( Lua, errorCount );
-	eiRUN_TEST( FluidSim, errorCount );
-	eiRUN_TEST( SphereFrustum, errorCount );
+//	eiRUN_TEST( FluidSim, errorCount );
+//	eiRUN_TEST( SphereFrustum, errorCount );
 	eiRUN_TEST( Bind, errorCount );
 	eiRUN_TEST( Message, errorCount );
 	eiRUN_TEST( FifoSpsc, errorCount );

@@ -9,13 +9,14 @@ template<class T> class CompactPool : NonCopyable
 {
 	const static bool s_NonPod = true;//todo
 public:
+	eiTYPEDEF_ID(Id);
 	CompactPool( Scope& a, uint size );
 	~CompactPool();
-	int Handle(const T& object);
-	int Alloc( const T& data);
-	int Alloc();
-	void Release( int handle );
-	T& operator[]( int handle );
+	Id Handle(const T& object);
+	Id Alloc( const T& data);
+	Id Alloc();
+	void Release( Id handle );
+	T& operator[]( Id handle );
 	const T* Begin() const { return m_data; }
 	      T* Begin()       { return m_data; }
 	const T* End()   const { return m_data+Size(); }
@@ -23,6 +24,8 @@ public:
 	uint Capactiy()  const { return m_pool.Capactiy(); }
 	uint Size()      const { return m_map.Size(); }
 	void Clear();
+	template<class Fn> void ForEach(Fn& fn);
+	template<class Fn> void ForEach(Fn& fn) const;
 private:
 	PoolBase<false> m_pool;
 	HandleMap m_map;

@@ -13,7 +13,7 @@ eiInfoGroup( TaskSection, false );
 
 #define eiEnterTaskSection_Impl(section, option, lock, extra)								\
 	{																						\
-		using namespace internal;															\
+		using namespace eight::internal;													\
 		eiASSERT( &*_ei_thread_id );														\
 		extra; lock _ei_section_lock;														\
 		TaskDistribution  _ei_task_distribution_value										\

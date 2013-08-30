@@ -5,16 +5,38 @@
 namespace eight {
 //------------------------------------------------------------------------------
 template <class I, class T>
-I BinarySearch( I first, I last, const T& value )
+I BinarySearch( I begin, I end, const T& value )
 {
-	first = std::lower_bound( first, last, value );
-	return (first!=last && !(value<*first)) ? first : last;
+	begin = std::lower_bound( begin, end, value );
+	return (begin!=end && !(value<*begin)) ? begin : end;
 }
 template <class I, class T, class F>
-I BinarySearch( I first, I last, const T& value, F pred )
+I BinarySearch( I begin, I end, const T& value, F pred )
 {
-	first = std::lower_bound( first, last, value, pred );
-	return (first!=last && !(pred(value,*first))) ? first : last;
+	begin = std::lower_bound( begin, end, value, pred );
+	return (begin!=end && !(pred(value,*begin))) ? begin : end;
+}
+//------------------------------------------------------------------------------
+template <class I, class T>
+I LinearSearch( I begin, I end, const T& value )
+{
+	for( I i = begin; i != end; ++i )
+	{
+		if( *i == value )
+			return i;
+	}
+	return end;
+}
+template <class I, class T, class F>
+I LinearSearch( I begin, I end, const T& value, F pred )
+{
+	for( I i = begin; i != end; ++i )
+	{
+		if( pred(*i,value) )
+			return i;
+	}
+	return end;
 }
 //------------------------------------------------------------------------------
 }
+//------------------------------------------------------------------------------

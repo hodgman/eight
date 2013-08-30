@@ -220,10 +220,12 @@ public:
 
 	BlobLoader::States Prepare();
 	bool Load(const AssetName& name, const BlobLoader::Request& req);//call at any time from any thread
-	void Update(uint worker);//should be called by all threads
+	void Update(uint worker, bool);//should be called by all threads
 	void ImmediateDevLoad(const char* path, const BlobLoader::ImmediateDevRequest&);
 
 private:
+	void FreeManifest();
+	void LoadManifest();
 	struct Pass { enum Type
 	{
 		Measure = 0,
@@ -264,11 +266,15 @@ private:
 	const char* const m_baseDevPath;
 	const char* const m_basePath;
 	const int m_baseLength;
-	SingleThread& m_osUpdateTask;
+	const char* const m_manifestFilename;
+	SingleThread m_osUpdateTask;
 	HANDLE m_manifestFile;
 	OVERLAPPED* m_manifestLoad;
 	uint m_manifestSize;
 	eiDEBUG( Atomic dbg_updating; )
+
+	friend const SingleThread& OsThread(BlobLoader&);
+	friend void ReloadManifest(BlobLoader&);
 };
 
 //------------------------------------------------------------------------------

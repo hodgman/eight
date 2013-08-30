@@ -92,11 +92,13 @@ template<class T>
 class AtomicPtr
 {
 public:
-	explicit AtomicPtr( T* p0 );
+	AtomicPtr(){}
+	explicit AtomicPtr( T* );
 	AtomicPtr( const AtomicPtr& );
 	AtomicPtr& operator=( const AtomicPtr& );
 	AtomicPtr& operator=( T* );
 	operator T*();
+	operator const Atomic&() const { return data; }
 
 	bool SetIfEqual( T* newValue, T* oldValue );///< sets to new if currently equal to old. returns true if succeeded. N.B. can be misleading if ABA problem is applicable.
 private:

@@ -11,10 +11,15 @@ using namespace eight;
 
 namespace
 {
+#if eiDEBUG_LEVEL != 0
+	static const int stress = 1;
+	static const int s_itemsPerWorker = 1*stress;
+#else
 	static const int stress = 3;
-	static const int s_workers = NumberOfHardwareThreads()*2;
-	static const int s_tasks = 2;
 	static const int s_itemsPerWorker = 10*stress;
+#endif
+	static const int s_workers = NumberOfHardwareThreads();
+	static const int s_tasks = 2;
 
 	struct WaitForTrue
 	{

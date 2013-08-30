@@ -1,42 +1,14 @@
 //------------------------------------------------------------------------------
 #pragma once
-#include <eight/core/debug.h>
-#include <eight/core/noncopyable.h>
+#include <eight/core/thread/futex.h>
+#include <eight/core/thread/tasksection.h>
+#include <rdestl/vector.h>
 namespace eight {
-template<class T> struct NativeHash;
+	template<class T> struct NativeHash;
+	struct AssetStorage;
 //------------------------------------------------------------------------------
 
-class TypeInfo {};//TODO
-
-//#define eiASSET_REFRESH // TODO - needs reimplementation
-
-#define eiASSERT_CAST(Base, Derived) (void)static_cast<Base*>((Derived*)0)
-
-#define eiTYPE_OF(t) TypeInfo()
-
-struct BlobLoadContext;
-struct Asset;
-struct AssetStorage;
-struct RefreshHeap;
-struct AssetRefreshContext
-{
-	AssetStorage* asset;
-	RefreshHeap* heap;
-};
-
-struct RefreshHeap
-{
-	static void* OnAllocate(uint numBlobs, u32 size[], u8  blobHint[], BlobLoadContext* context);
-	static void OnFree(u8* alloc);
-};
-
-struct AssetRefreshMemory
-{
-	bool inUse ;
-	u8* data;
-	u32 size;
-//	void (*free)( u8* );
-};
+#define eiASSET_REFRESH //TODO always define as 0 or 1
 
 struct Handle
 {
@@ -55,11 +27,20 @@ struct Handle
 struct AssetName
 {
 	u32 hash;
-	explicit AssetName(u32 name) : hash(name) {}
+	eiDEBUG( const char* dbgName; )
+
+	typedef u32 HashType;
+	explicit AssetName(u32 name) : hash(name) { eiDEBUG( dbgName = "?"; ) }
 	AssetName(const char* n=0);
+	AssetName(u32 name, const char* strName);
 	bool operator==(const AssetName& o) const { return hash == o.hash; }
 	friend struct NativeHash<AssetName>;
 };
+
+inline bool operator<(const AssetName& lhs, const AssetName& rhs)
+{
+	return lhs.hash < rhs.hash;
+}
 
 struct Asset : NonCopyable
 {
@@ -70,7 +51,37 @@ protected:
 	u8* Data() { return (u8*)m_handle.ptr; }
 //	template<class T> T* Data()       { eiASSERT(m_handle); return (T*)m_handle.ptr; }
 	Handle m_handle;
+#if defined(eiASSET_REFRESH)
+	Asset() : m_handle((void*)0) {}
+#endif
 };
+
+#if defined(eiASSET_REFRESH)
+class AssetRefreshCallback : NonCopyable
+{
+public:
+	AssetRefreshCallback(callback, void*, TaskSection);
+	~AssetRefreshCallback();
+private:
+	callback fn;
+	void* arg;
+	TaskSection fnTask;
+	Futex m_dependencyLock;
+	rde::vector<AssetStorage*> thisDependsOn;
+	friend void AssetDependency(AssetRefreshCallback&, Asset& used);
+	friend class AssetRootImpl;
+};
+       void AssetDependency(Asset& user, Asset& used);
+       void AssetDependency(AssetRefreshCallback&, Asset& used);
+#else
+struct AssetRefreshCallback : NonCopyable
+{
+	AssetRefreshCallback(callback, void*, TaskSection){}
+};
+inline void AssetDependency(Asset& user, Asset& used){}
+inline void AssetDependency(AssetRefreshCallback&, Asset& used){}
+#endif
+
 
 struct AssetStorage : public Asset
 {
@@ -80,30 +91,26 @@ public:
 	u8* Data() { return Asset::Data(); }
 private:
 	friend class AssetScope;
+	void Construct(const AssetName& n);
 	AssetStorage* m_next;
 #if defined(eiASSET_REFRESH)
-	void FreeRefreshData();
-	template<class T> bool Refresh( AssetScope& s, AssetName name, BlobLoader& blobs, T& factory, RefreshHeap& a )
-	{//todo - Take out a lock to prevent two concurrent loads, return it when the load is done.
-	 //     - Allow continuous calling, return whether the loaded asset matches 'name', and try to issue a load command if returning false.
-		eiASSERT( !m_heap || m_heap == &a );
-		//m_refresh.free = &RefreshHeap::OnFree;
-		m_heap = &a;
-		BlobLoader::Request req;
-		BlobLoadContext ctxData  = { &s, this, &factory, eiDEBUG(name.String()) };
-		m_ctxAlloc.asset = this;
-		m_ctxAlloc.heap = &a;
-		req.userData = ctxData;
-		req.pfnComplete = &T::OnBlobLoaded;
-		req.pfnAllocate = &RefreshHeap::OnAllocate;
-		return blobs.Load( name, req );
-	}
-private:
-	friend struct RefreshHeap;
-	AssetRefreshMemory m_original;
-	AssetRefreshMemory m_refresh;
-	AssetRefreshContext m_ctxAlloc;
-	RefreshHeap* m_heap;
+	AssetName m_name;
+	struct AllocHeader { AllocHeader* next; };
+	friend class AssetRefreshCallback;
+	friend class AssetRootImpl;
+	friend void AssetDependency(Asset&, Asset&);
+	friend void AssetDependency(AssetRefreshCallback&, Asset&);
+	AllocHeader* m_refreshAllocations;
+	Futex m_dependencyLock;
+	rde::vector<AssetStorage*> m_thisDependsOnAsset;
+	rde::vector<AssetStorage*> m_assetDependsOnThis;
+	rde::vector<AssetRefreshCallback*> m_userDependsOnThis;
+	bool m_resolved;
+
+	void* RefreshAlloc(uint size);
+	void RefreshFree();
+	void UnlinkFromUsedAssets();
+	void Destruct();
 #endif
 };
 

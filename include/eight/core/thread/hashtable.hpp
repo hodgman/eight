@@ -65,6 +65,27 @@ int THashTableBase<K,V,T>::FindKeyInBucketChain( const K& k, int startNode )
 }
 
 template<class K, class V, bool T>
+bool THashTableBase<K,V,T>::Find( const K& k, int& index )
+{
+	H hash = NativeHash<K>::Hash(k);
+	uint bucket = hash % numBuckets;
+	const u32 mskLock = 0x80000000;
+	u32 prevBucketHead = ~mskLock & bucketHeads[bucket];
+	if( prevBucketHead )//if there's already a bucket chain, search it for matches
+	{
+		eiASSERT( ((int)prevBucketHead)-1 >= 0 );
+		int idx = FindKeyInBucketChain( k, prevBucketHead-1 );
+		if( idx >= 0 )//it's already in the bucket
+		{
+			index = (uint)idx;
+			return true;
+		}
+	}
+	index = -1;
+	return false;
+}
+
+template<class K, class V, bool T>
 bool THashTableBase<K,V,T>::Insert( const K& k, int& index )
 {
 	H hash = NativeHash<K>::Hash(k);

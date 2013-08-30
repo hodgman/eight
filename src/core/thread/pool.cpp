@@ -86,7 +86,6 @@ void eight::StartThreadPool(Scope& a, FnPoolThreadEntry* entry, void* arg, int n
 		numWorkers = max(1U, NumberOfPhysicalCores(a) - 1);
 //		numWorkers = max(1, NumberOfPhysicalCores()/2 + 1);
 //		numWorkers = (NumberOfPhysicalCores()+1)/2; 
-//		numWorkers = 1;
 	Atomic* exit = eiNew(a, Atomic)();
 	JobPoolImpl* jobs = eiNew(a, JobPoolImpl)( a, numWorkers );
 	PoolThreadEntryInfo info;

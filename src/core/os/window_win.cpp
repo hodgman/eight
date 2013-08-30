@@ -345,6 +345,8 @@ public:
 	void SetWindowPos( int x, int y );
 	void IconifyWindow();
 	void RestoreWindow();
+	uint Width() const;
+	uint Height() const;
 
 	bool PollEvents(uint maxMessages, const Timer* t, float maxTime);
 	//void WaitEvents();
@@ -363,6 +365,8 @@ public:
 	GlfwTimer _glfwTimer;
 	GlfwInput _glfwInput;
 	_GLFWwin _glfwWin;
+
+	bool quitRequest;
 };
 
 HWND GetHwnd(const OsWindow& wnd ) { return ((OsWindowWin32&)wnd)._glfwWin.Wnd; }
@@ -374,6 +378,7 @@ OsWindowWin32::OsWindowWin32( const SingleThread& t ) : m_thread(t)
 	memset( &_glfwTimer, 0, sizeof(GlfwTimer) );
 	memset( &_glfwInput, 0, sizeof(GlfwInput) );
 	memset( &_glfwWin, 0, sizeof(_GLFWwin) );
+	quitRequest = false;
 }
 
 OsWindowWin32::~OsWindowWin32()
@@ -382,11 +387,11 @@ OsWindowWin32::~OsWindowWin32()
 		CloseWindow();
 }
 
-OsWindow* OsWindow::New( Scope& a, const SingleThread& thread, int width, int height, WindowMode::Type mode, const char* title, const Callbacks& c )
+OsWindow* OsWindow::New( Scope& a, const SingleThread& thread, const OsWindowArgs& args, const Callbacks& c )
 {
 	eiASSERT( thread.IsCurrent() );
 	OsWindowWin32* win = eiNew( a, OsWindowWin32 )( thread );
-	bool ok = win->OpenWindow( width, height, mode, title, c );
+	bool ok = win->OpenWindow( args.width, args.height, args.mode, args.title, c );
 	eiASSERT( ok );
 	return win;
 }
@@ -394,9 +399,17 @@ OsWindow* OsWindow::New( Scope& a, const SingleThread& thread, int width, int he
       OsWindowWin32& Downcast(      OsWindow*p) { return *(OsWindowWin32*)p; }
 const OsWindowWin32& Downcast(const OsWindow*p) { return *(OsWindowWin32*)p; }
 
+uint OsWindow::Width() const
+{
+	return Downcast(this).Width();
+}
+uint OsWindow::Height() const
+{
+	return Downcast(this).Height();
+}
 bool OsWindow::PollEvents(uint maxMessages, const Timer* t, float maxTime)
 {
-	return Downcast(this).PollEvents(maxMessages, t, maxTime);
+	return Downcast(this).PollEvents(maxMessages, t, maxTime) | Downcast(this).quitRequest;
 }
 const SingleThread& OsWindow::Thread() const
 {
@@ -405,6 +418,10 @@ const SingleThread& OsWindow::Thread() const
 void OsWindow::ShowMouseCursor(bool b)
 {
 	Downcast(this).ShowMouseCursor(b);
+}
+void OsWindow::Close()
+{
+	Downcast(this).quitRequest = true;
 }
 
 //========================================================================
@@ -706,6 +723,30 @@ bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* tit
     _glfwWin.KeyCallback           = c.key;
     _glfwWin.CharCallback          = c.chars;
 
+	bool useDefaultSize = ( width == 0 || height == 0 );
+	if( useDefaultSize )
+	{
+		if( mode == WindowMode::FullScreen )
+		{
+			width = GetSystemMetrics( SM_CXSCREEN );
+			height = GetSystemMetrics( SM_CYSCREEN );
+		}
+		else
+		{
+			RECT rect = {};
+			if( SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0) )
+			{
+				width = rect.right-rect.left;
+				height = rect.bottom-rect.top;
+			}
+			else
+			{
+				width = 1280;
+				height = 720;
+			}
+		}
+	}
+
     eiASSERT( width > 0 && height > 0 );
 
     // Remeber window settings
@@ -754,15 +795,15 @@ bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* tit
     DWORD dwExStyle = WS_EX_APPWINDOW;
 
     // Set window style, depending on fullscreen mode
-    if( _glfwWin.Fullscreen )
+   // if( _glfwWin.Fullscreen )
     {
         dwStyle   |= WS_POPUP;
     }
-    else
+    /*else
     {
         dwStyle   |= WS_OVERLAPPEDWINDOW;
         dwExStyle |= WS_EX_WINDOWEDGE;
-    }
+    }*/
 
     // Remember window styles
     _glfwWin.dwStyle   = dwStyle;
@@ -770,7 +811,14 @@ bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* tit
 
     // Set window size to true requested size (adjust for window borders)
 	int full_width, full_height;
-    _glfwGetFullWindowSize( dwStyle, dwExStyle, _glfwWin.Width, _glfwWin.Height, &full_width, &full_height );
+	_glfwGetFullWindowSize( dwStyle, dwExStyle, _glfwWin.Width, _glfwWin.Height, &full_width, &full_height );
+	if( useDefaultSize )
+	{
+		_glfwWin.Width = width-(full_width-width);
+		_glfwWin.Height = height-(full_height-height);
+		full_width = width;
+		full_height = height;
+	}
 
    // Adjust window position to working area (e.g. if the task bar is at
    // the top of the display). Fullscreen windows are always opened in
@@ -826,7 +874,14 @@ bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* tit
 
     // If full-screen mode was requested, disable mouse cursor
     if( _glfwWin.Fullscreen )
-        ShowMouseCursor( false );
+	{
+		ShowMouseCursor( false );
+		width = _glfwWin.Width;
+		height = _glfwWin.Height;
+		_glfwWin.Width = 0;
+		_glfwWin.Height = 0;
+		SetWindowSize( width, height );
+	}
 
     return true;
 }
@@ -1144,7 +1199,8 @@ eiInfoGroup(OsWindow, false);
 
 bool OsWindowWin32::PollEvents(uint maxMessages, const Timer* timer, float maxTime)
 {
-	eiASSERT( IsWindowOpen() );
+	if( !IsWindowOpen() )
+		return true;
 
     bool gotQuitMessage = false;
 
@@ -1742,4 +1798,13 @@ void OsWindowWin32::TranslateChar( DWORD wParam, DWORD lParam, int action )
             InputChar( (int) char_buf[ i ], action );
         }
     }
+}
+
+uint OsWindowWin32::Width() const
+{
+	return _glfwWin.Width;
+}
+uint OsWindowWin32::Height() const
+{
+	return _glfwWin.Height;
 }

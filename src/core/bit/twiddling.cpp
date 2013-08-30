@@ -66,8 +66,8 @@ uint eight::LeastSignificantBit( u64 value )
 	eiASSERT( anyBits );
 #else
 	unsigned long resultHigh, resultLow;
-	unsigned char anyBitsHigh = _BitScanForward( &resultHigh, u32(value>>32) );
-	unsigned char anyBitsLow  = _BitScanForward( &resultLow, u32(value) );
+	unsigned char anyBitsHigh = _BitScanForward( &resultHigh, u32((value>>32) & 0xFFFFFFFFU) );
+	unsigned char anyBitsLow  = _BitScanForward( &resultLow, u32(value & 0xFFFFFFFFU) );
 	eiASSERT( anyBitsHigh || anyBitsLow );
 	result = anyBitsLow ? resultLow : 32 + resultHigh;
 #endif

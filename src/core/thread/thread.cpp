@@ -110,6 +110,7 @@ Thread::Thread(Scope& a, ThreadEntry entry, void* arg) : pimpl(a.Alloc<ThreadInf
 	eiASSERT( info.handle != 0 );
 	if( !info.handle )
 		return;
+//	SetThreadPriority( info.handle, THREAD_PRIORITY_ABOVE_NORMAL );
 	info.runnung = true;//signal the new thread that the info struct has been filled in
 	YieldThreadUntil( WaitForTrue(entryInfo.started), 0, false );//wait until the thread has consumed the local entryInfo variable
 }

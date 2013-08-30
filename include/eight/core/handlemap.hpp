@@ -10,14 +10,14 @@ HandleMap::HandleMap( Scope& a, uint capacity )
 u16 HandleMap::ToPhysical( uint handle ) const
 {
 	eiASSERT( handle < dbg_capacity );
-	eiDEBUG( m_h2p[handle] = 0xFFFFU );
+	eiASSERT( handle == m_p2h[m_h2p[handle]] );
 	return m_h2p[handle];
 }
 
 u16 HandleMap::ToHandle( uint physical ) const
 {
 	eiASSERT( physical < dbg_capacity );
-	eiDEBUG( m_p2h[physical] = 0xFFFFU );
+	eiASSERT( physical == m_h2p[m_p2h[physical]] );
 	return m_p2h[physical];
 }
 

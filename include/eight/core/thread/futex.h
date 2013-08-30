@@ -2,10 +2,21 @@
 #pragma once
 #include <eight/core/thread/atomic.h>
 #include <eight/core/debug.h>
+#include <eight/core/noncopyable.h>
 namespace eight {
 //------------------------------------------------------------------------------
 
-class Futex
+template<class T>
+class ScopeLock : NonCopyable
+{
+public:
+	ScopeLock(T& l) : mutex(l) { mutex.Lock(); }
+	~ScopeLock()               { mutex.Unlock(); }
+private:
+	T& mutex;
+};
+
+class Futex : NonCopyable
 {
 public:
 	void Lock();

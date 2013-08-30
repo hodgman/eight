@@ -15,17 +15,38 @@ namespace eight {
 
 //eiInfoGroup(TimedLoop, true);
 
+template<class T, class InterruptData>
+struct SelectInterruptHandler
+{
+	template<class SimLoop>
+	static TaskLoop::FnInterrupt* Get() { return &SimLoop::HandleInterrupt<T>; }
+};
+template<class T>
+struct SelectInterruptHandler<T, void>
+{
+	static void Fn(Scope&, void*, void*, uint, uint)
+	{
+		eiASSERT( false );
+	}
+	template<class SimLoop>
+	static TaskLoop::FnInterrupt* Get() { return &Fn; }
+};
 
 class SimLoop
 {
 	SimLoop(); ~SimLoop();
-	template<class T> static void* PrepareGameLoop(Scope& a, Scope& frame, void* shared, void* thread, const void* prevFrame)
+	template<class T> static void* PrepareGameLoop(Scope& a, Scope& frame, void* shared, void* thread, const void* prevFrame, void** interrupt)
 	{
-		return ((T*)shared)->Prepare( a, frame, (T::ThreadData*)thread, (T::FrameData*)prevFrame );
+		return ((T*)shared)->Prepare( a, frame, (T::ThreadData*)thread, (T::FrameData*)prevFrame, (typename T::InterruptData**)interrupt );
 	}
 	template<class T> static void ExecuteGameLoop(Scope& a, Scope& frame, void* shared, void* thread, void* taskData, uint worker)
 	{
 		((T*)shared)->Execute( a, frame, (T::ThreadData*)thread, (T::FrameData*)taskData, worker );
+	}
+	template<class T, class Y> friend struct SelectInterruptHandler;
+	template<class T> static void HandleInterrupt(Scope& a, void* interrupt, void* shared, uint worker, uint numWorkers)
+	{
+		((T*)shared)->HandleInterrupt( a, (T::InterruptData*)interrupt, worker, numWorkers );
 	}
 	template<class T> struct GameLoopArgs { Scope* a; typename T::Args* userArgs; };
 	template<class T> static void* InitGameLoopThread(Scope& thread, uint idx, TaskLoop& loop, TaskLoop::Config* cfg)
@@ -37,6 +58,7 @@ class SimLoop
 			cfg->userShared  = T::Create(a, thread, *args.userArgs, loop);
 			cfg->userPrepare = &PrepareGameLoop<T>;
 			cfg->userTask    = &ExecuteGameLoop<T>;
+			cfg->userInterrupt = SelectInterruptHandler<T, T::InterruptData>::Get<SimLoop>();
 		}
 		return T::InitThread( thread, *args.userArgs );
 	}
