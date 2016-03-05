@@ -20,6 +20,8 @@ T* RadixSort( T* eiRESTRICT inputBegin, T* eiRESTRICT bufferBegin, uint size, co
 template<class T>
 T* RadixSort( T* eiRESTRICT inputBegin, T* eiRESTRICT bufferBegin, uint size );
 
+//TODO 3x11bit version as well as 4x8bit
+
 //------------------------------------------------------------------------------
 #include "radix.hpp"
 //------------------------------------------------------------------------------

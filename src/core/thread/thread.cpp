@@ -3,17 +3,33 @@
 #include <eight/core/test.h>
 #include <eight/core/alloc/scope.h>
 #include <eight/core/os/win32.h>
+#include <eight/core/bit/twiddling.h>
+#include <intrin.h>
 
 namespace eight { namespace internal { void OnThreadExitCleanup(); } }
 
-
 using namespace eight;
+
+static bool IsAMD()
+{
+	static const char AuthenticAMD[] = "AuthenticAMD";
+	s32 CPUInfo[4];
+	__cpuid( CPUInfo, 0 );
+	return CPUInfo[1] == *reinterpret_cast<const s32*>( AuthenticAMD )
+		&& CPUInfo[2] == *reinterpret_cast<const s32*>( AuthenticAMD + 8 )
+		&& CPUInfo[3] == *reinterpret_cast<const s32*>( AuthenticAMD + 4 );
+}
+
+uint GetThreadId()
+{
+	return ::GetCurrentThreadId();
+}
 
 uint eight::NumberOfHardwareThreads()
 {
     SYSTEM_INFO si;
     GetSystemInfo( &si );
-    return (uint)si.dwNumberOfProcessors;// TODO - this gives us the number of hardware threads, not the number of processing cores.
+    return (uint)si.dwNumberOfProcessors;
 }
 uint eight::NumberOfPhysicalCores(Scope& a)
 {
@@ -32,12 +48,20 @@ uint eight::NumberOfPhysicalCores(Scope& a)
 		return NumberOfHardwareThreads();
 	eiASSERT( (bufferSize/sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION))*sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION) == bufferSize );
 	uint numCores = 0;
+	uint numThreads = 0;
 	for( byte* end=((byte*)buffer)+bufferSize; (byte*)buffer < end; ++buffer )
 	{
-		numCores += ( buffer->Relationship == RelationProcessorCore ) ? 1 : 0;
+		numCores   += ( buffer->Relationship == RelationProcessorCore ) ? 1 : 0;
+		numThreads += ( buffer->Relationship == RelationProcessorCore ) ? CountBitsSet((u64)buffer->ProcessorMask) : 0;
 	}
 	if( numCores == 0 )
 		return NumberOfHardwareThreads();
+	if( IsAMD() )//ugly: AMD doesn't have any Hyperthreaded CPU's, but some describe themselves in the same way as an Intel Hyperthreaded CPU...
+	{
+		if( numThreads == 0 )
+			return NumberOfHardwareThreads();
+		return numThreads;
+	}
 	return numCores;
 }
 
@@ -58,15 +82,16 @@ struct ThreadEntryInfo
 
 static DWORD WINAPI ThreadMain_Internal( void* data )
 {
+	void eight_ClearThreadId();
+	     eight_ClearThreadId();
 	ThreadEntryInfo& entryInfo = *(ThreadEntryInfo*)(data);
 	ThreadEntry entry = entryInfo.entry;
 	void* arg = entryInfo.arg;
 	ThreadInfo* info = entryInfo.info;
 	YieldThreadUntil( WaitForTrue(info->runnung), 0, false );//wait until the main thread has filled in the info struct
-//	while( !info->runnung ){}//wait until the main thread has filled in the info struct
-	entryInfo.started = true;//signal to main thread that it can destroy the entryInfo struct now
+	entryInfo.started = 1;//signal to main thread that it can destroy the entryInfo struct now
 	int result = entry( arg, (int)info->systemId );
-	info->runnung = false;//signal to main that the thread has finished
+	info->runnung = 0;//signal to main that the thread has finished
 	internal::OnThreadExitCleanup();
 	return (DWORD)result;
 }
@@ -93,16 +118,14 @@ static DWORD WINAPI ThreadMain_Test( void* data )
 
 Thread::Thread(Scope& a, ThreadEntry entry, void* arg) : pimpl(a.Alloc<ThreadInfo>())
 {
-	void ClearThreadId();
-	     ClearThreadId();
 	ThreadInfo& info = *(ThreadInfo*)(pimpl);
 
 	ThreadEntryInfo entryInfo;
 	entryInfo.entry = entry;
 	entryInfo.arg = arg;
 	entryInfo.info = &info;
-	entryInfo.started = false;
-	info.runnung = false;
+	entryInfo.started = 0;
+	info.runnung = 0;
 	if( eight::InTest() )
 		info.handle = CreateThread( 0, 0, &ThreadMain_Test, &entryInfo, 0, &info.systemId );
 	else
@@ -110,8 +133,9 @@ Thread::Thread(Scope& a, ThreadEntry entry, void* arg) : pimpl(a.Alloc<ThreadInf
 	eiASSERT( info.handle != 0 );
 	if( !info.handle )
 		return;
+//todo - if high priority mode?
 //	SetThreadPriority( info.handle, THREAD_PRIORITY_ABOVE_NORMAL );
-	info.runnung = true;//signal the new thread that the info struct has been filled in
+	info.runnung = 1;//signal the new thread that the info struct has been filled in
 	YieldThreadUntil( WaitForTrue(entryInfo.started), 0, false );//wait until the thread has consumed the local entryInfo variable
 }
 

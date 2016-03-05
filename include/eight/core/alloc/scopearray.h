@@ -5,22 +5,28 @@
 namespace eight {
 //------------------------------------------------------------------------------
 
-template<class T>
+template<class T, bool POD=true>
 class ScopeArray
 {
 public:
-	ScopeArray( Scope& a, uint s ) : data(eiAllocArray(a, T, s))/*, size()*/ { eiDEBUG(capacity=s); }
-/*	void Push( const T& t )
-	{
-		eiASSERT( size < capacity );
-		data[size++] = t;
-	}
-	uint Size() const { return size; }*/
-	T& operator[]( uint i ) { eiASSERT( /*i < size &&*/ i < capacity ); return data[i]; }
+	ScopeArray( Scope& a, uint s ) : data( s ? eiAllocArray( a, T, s ) : 0 ) { eiDEBUG( capacity=s ); }
+	T& operator[]( uint i ) { eiASSERT( i < capacity ); return data[i]; }
 	T* Begin() { return data; }
+	int Index( const T& item ) { return &item - data; }
 private:
 	T* data;
-//	uint size;
+	eiDEBUG( uint capacity );
+};
+template<class T>
+class ScopeArray<T,false>
+{
+public:
+	ScopeArray( Scope& a, uint s ) : data( s ? eiNewArray( a, T, s ) : 0 ) { eiDEBUG( capacity=s ); }
+	T& operator[]( uint i ) { eiASSERT( i < capacity ); return data[i]; }
+	T* Begin() { return data; }
+	int Index( const T& item ) { return &item - data; }
+private:
+	T* data;
 	eiDEBUG( uint capacity );
 };
 

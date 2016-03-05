@@ -63,6 +63,7 @@ private:
 			else
 				Sleep(0);
 		}
+		return 0;
 	}
 
 	static Job* PopJob( WorkerThreads* self )

@@ -1,75 +1,105 @@
 //------------------------------------------------------------------------------
-template<class T> inline void* Scope::New()
+
+inline Scope& Scope::DestructorHelper::Owner() const
 {
-	eiASSERT( !Sealed() );
-	return AllocObject<T>();
+	eiSTATIC_ASSERT( (eiOffsetOf(Scope,OnConstructed)) == 0 );
+	return *(Scope*)this;
 }
-template<class T> inline T* Scope::New( uint count )
+template<class T> void* Scope::New()
+{
+	return Alloc<T>();
+}
+template<class T> T* Scope::New( uint count )
 {
 	eiASSERT( !Sealed() );
-	eiASSERT( count );
-	T* data = AllocObject<T>( count );
-	if( data ) for( int i=0; i != count; ++i )
+	if( eiUnlikely(!count) )
+		return 0;
+	T* result = Alloc<T>( count );
+	for( int i=0; i != count; ++i )
 	{
-		new(&data[i]) T;
+		new(&result[i]) T;
 	}
-	return data;
-}
-template<class T> inline T* Scope::New( uint count, const T& init )
-{
-	eiASSERT( !Sealed() );
-	eiASSERT( count );
-	T* data = AllocObject<T>( count );
-	if( data ) for( int i=0; i != count; ++i )
+	if( HasDestructor<T>::value )
 	{
-		new(&data[i]) T(init);
-	}
-	return data;
-}
-template<class T> inline T* Scope::Alloc()
-{
-	eiASSERT( !Sealed() );
-	alloc.Align(alignment);
-	return alloc.Alloc<T>();
-}
-template<class T> inline T* Scope::Alloc( uint count )
-{
-	eiASSERT( !Sealed() );
-	eiASSERT( count );
-	T* data = 0;
-	if( alloc.Align(alignment) )
-		data = alloc.Alloc<T>( count );
-	return data;
-}
-/*
-template<class T> inline T* Scope::Alloc( uint count, const T& init )
-{
-	eiASSERT( !Sealed() );
-	eiASSERT( count );
-	alloc.Align(alignment);
-	T* data = 0;
-	if( alloc.Align(alignment) )
-	{
-		data = alloc.Alloc<T>( count );
-		for( int i=0; i != count; ++i )
+		if( count > 1 )
 		{
-			new(&data[i]) T(init);
+			ArrayDestructor* d = Alloc<ArrayDestructor>();
+			d->count = count;
+			d->p = result;
+			OnUnwind( d, &ArrayDestructor::Callback<T> );
 		}
+		else
+			OnUnwind( result, &DestructorCallback<T> );
 	}
-	return data;
-}*/
-template<class T> inline void Scope::DestructorCallback(void* p)
+	return result;
+}
+template<class T> T* Scope::New( uint count, const T& init )
 {
+	eiASSERT( !Sealed() );
+	if( eiUnlikely(!count) )
+		return 0;
+	T* result = Alloc<T>( count );
+	for( int i=0; i != count; ++i )
+	{
+		new(&result[i]) T(init);
+	}
+	if( HasDestructor<T>::value )
+	{
+		if( count > 1 )
+		{
+			ArrayDestructor* d = Alloc<ArrayDestructor>();
+			d->count = count;
+			d->p = result;
+			OnUnwind( d, &ArrayDestructor::Callback<T> );
+		}
+		else
+			OnUnwind( result, &DestructorCallback<T> );
+	}
+	return result;
+}
+template<class T> T* Scope::Alloc()
+{
+	eiASSERT( !Sealed() );
+	for(;;) 
+	{
+		if( alloc->Align(eiAlignOf(T)) )
+		{
+			T* data = alloc->Alloc<T>();
+			if( data )
+				return data;
+		}
+		OnOutOfMemory( eiAlignOf(T) + sizeof(T) );
+	}
+}
+template<class T> T* Scope::Alloc( uint count )
+{
+	eiASSERT( !Sealed() );
+	if( eiUnlikely(!count) )
+		return 0;
+	for(;;) 
+	{
+		if( alloc->Align(eiAlignOf(T)) )
+		{
+			T* data = alloc->Alloc<T>( count );
+			if( data )
+				return data;
+		}
+		OnOutOfMemory( eiAlignOf(T) + sizeof(T) * count );
+	}
+}
+template<class T> void Scope::ArrayDestructor::Callback(void* a)
+{
+	eiASSERT(a);
+	ArrayDestructor* ad = (ArrayDestructor*)a;
+	eiASSERT(ad->p);
+	for( T* t = (T*)ad->p, *end=t + ad->count; t!=end; ++t )
+	{
+		t->~T();
+	}
+}
+template<class T> void Scope::DestructorCallback(void* p)
+{
+	eiASSERT(p);
 	((T*)p)->~T();
-}
-template<class T> inline T* Scope::AllocObject()
-{
-	FnDestructor* fn = &DestructorCallback<T>;
-	return (T*)AllocObject( sizeof(T), HasDestructor<T>::value ? fn : 0 );
-}
-template<class T> inline T* Scope::AllocObject( uint count )
-{
-	FnDestructor* fn = &DestructorCallback<T>;
-	return (T*)AllocObject( count, sizeof(T), HasDestructor<T>::value ? fn : 0 );
 }
 //------------------------------------------------------------------------------

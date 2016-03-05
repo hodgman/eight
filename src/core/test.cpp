@@ -132,7 +132,7 @@ void PrintStack( CONTEXT ctx )
 			return;
 
 		// write the address
-		printf( "0x%x|", sf.AddrPC.Offset );
+		printf( "0x%x|", (u32)sf.AddrPC.Offset );
 
 		DWORD64 module_base = SymGetModuleBase64(process, sf.AddrPC.Offset);
 		char module_name[MAX_PATH] = {};

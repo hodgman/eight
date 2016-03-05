@@ -529,7 +529,7 @@ void AssetScope::Close()
 
 AssetScope::State AssetScope::Update(uint worker)
 {
-	eiASSERT( CurrentPoolThread().index == worker );
+	eiASSERT( GetThreadId()->ThreadIndex() == worker );
 	if( IsLoading() )
 		return Loading;
 	s32 resolved = m_resolved;
@@ -541,7 +541,10 @@ AssetScope::State AssetScope::Update(uint worker)
 	if( (resolved & 0xFFFF) == userMask )//all threads done
 	{
 		if( (int)pass >= m_maxResolveOrder )//more resolve passes required?
+		{
+			OnLoaded();
 			return Loaded;//nope, all done
+		}
 		else//yep
 		{
 			++pass;
@@ -558,14 +561,76 @@ AssetScope::State AssetScope::Update(uint worker)
 	}
 	if( (resolved & thisMask) == 0 )
 	{
-		Resolve(worker, pass);
-		m_resolved += thisMask;
+		if( Resolve(worker, pass) )
+			m_resolved += thisMask;
 	}
 	return Resolving;
 }
-	
+
+
+AssetsLoadedCallback::AssetsLoadedCallback(callback fn, void* arg, TaskSection task, const char* name)
+	: fn(fn)
+	, arg(arg)
+	, fnTask(task)
+	, next()
+{
+	eiDEBUG( dbgName = name );
+	eiDEBUG( done = false );
+}
+AssetsLoadedCallback::~AssetsLoadedCallback()
+{
+	eiASSERT( done );
+}
+void AssetScope::OnLoaded( AssetsLoadedCallback& cb )
+{
+	if( IsLoaded() )
+	{
+		eiASSERT( false );
+	}
+	eiASSERT( !cb.next );
+	struct Insert
+	{
+		Insert(AssetsLoadedCallback& cb, AtomicPtr<AssetsLoadedCallback>& m_onLoaded) : cb(cb), m_onLoaded(m_onLoaded) {} AssetsLoadedCallback& cb; AtomicPtr<AssetsLoadedCallback>& m_onLoaded;
+		bool operator()()
+		{
+			cb.next = m_onLoaded;
+			return m_onLoaded.SetIfEqual(&cb, cb.next);
+		}
+	};
+	YieldThreadUntil( Insert(cb, m_onLoaded) );
+}
+void AssetScope::OnLoaded()
+{
+	for( AssetsLoadedCallback* c = m_onLoaded; c; c = c->next )
+	{
+		eiBeginSectionRedundant( c->fnTask );
+		{
+			c->fn( c->arg );
+			eiDEBUG( c->done = true );
+		}
+		eiEndSection( c->fnTask );
+	}
+}
+
+bool AssetScope::IsLoaded() const
+{
+	if( IsLoading() )
+		return false;
+	s32 resolved = m_resolved;
+	s32 userMask = (s32)m_userThreads.GetMask();
+	uint pass = ((uint)resolved) >> 16;
+	if( (resolved & 0xFFFF) == userMask && //all threads done
+		(int)pass >= m_maxResolveOrder )   //no more resolve passes required
+	{
+		return true;//nope, all done
+	}
+	return false;
+}
+
 bool AssetScope::IsLoading() const
 {
+	if( m_parent && m_parent->IsLoading() )
+		return true;
 	s32 loads = m_loadsInProgress;
 	return loads != 0xFFFFFFFF;
 }
@@ -577,7 +642,7 @@ AssetScope::~AssetScope()
 	m_root->Destroyed(*this);
 	struct FreeRefreshAllocations
 	{
-		void operator()( const AssetName&, AssetStorage& asset )
+		void operator()( const AssetName&, AssetStorage& asset ) const
 		{
 			asset.RefreshFree();
 		}
@@ -585,7 +650,7 @@ AssetScope::~AssetScope()
 	m_assets.ForEach( FreeRefreshAllocations() );
 	struct Destruct
 	{
-		void operator()( const AssetName&, AssetStorage& asset )
+		void operator()( const AssetName&, AssetStorage& asset ) const
 		{
 			asset.Destruct();
 		}
@@ -604,7 +669,7 @@ void AssetScope::Release(uint worker)
 	eiDEBUG( m_dbgReleased += thisMask );
 	struct FnRelease
 	{
-		void operator()( void* factory, FactoryData& data )
+		void operator()( void* factory, FactoryData& data ) const
 		{
 			eiASSERT( factory && (s32)data.ready );
 			PfnRelease onRelease = data.onRelease;
@@ -624,11 +689,11 @@ void AssetScope::Release(uint worker)
 	m_factories.ForEach( FnRelease() );
 }
 
-void AssetScope::Resolve(uint worker, uint pass)
+bool AssetScope::Resolve(uint worker, uint pass)
 {
 	struct FnResolve
 	{
-		FnResolve(uint pass):pass(pass){}uint pass;
+		FnResolve(uint pass):pass(pass), complete(true) {} uint pass; bool complete;
 		void operator()( void* factory, FactoryData& data )
 		{
 			eiASSERT( factory && (s32)data.ready );
@@ -648,13 +713,20 @@ void AssetScope::Resolve(uint worker, uint pass)
 #else
 						onResolve( factory, *asset );
 #endif
+						if( false )//TODO - max resolve per frame counter
+						{
+							complete = false;
+							break;
+						}
 					}
 				}
 				eiEndSection( data.factoryThread );
 			}
 		}
 	};
-	m_factories.ForEach( FnResolve(pass) );
+	FnResolve fn(pass);
+	m_factories.ForEach( fn );
+	return fn.complete;
 }
 
 static void AtomicMax(Atomic* inout, s32 input)//todo - move
@@ -700,6 +772,21 @@ AssetScope::FactoryData* AssetScope::FindFactoryBucket(void* factory, const Fact
 	return &data;
 }
 
+Asset* AssetScope::Find( AssetName n )
+{
+	if( m_parent )
+	{
+		Asset* found = m_parent->Find(n);
+		if( found )
+			return found;
+	}
+	int asset = -1;
+	if( m_assets.Find(n, asset) )
+	{
+		return &m_assets.At(asset);
+	}
+	return 0;
+}
 Asset* AssetScope::Load( AssetName n, BlobLoader& blobs, void* factory, const FactoryInfo& info )
 {
 #if defined(eiASSET_REFRESH)
@@ -751,8 +838,8 @@ Asset* AssetScope::Load( AssetName n, BlobLoader& blobs, void* factory, const Fa
 void AssetScope::BeginAssetRefresh()
 {
 #if defined(eiASSET_REFRESH)
-	eiASSERT( !IsLoading() );
-	eiDEBUG( uint worker = CurrentPoolThread().index );
+//	eiASSERT( !IsLoading() );
+	eiDEBUG( uint worker = GetThreadId()->ThreadIndex() );
 	eiDEBUG( s32 resolved = m_resolved );
 	eiDEBUG( uint pass = ((uint)resolved) >> 16 );
 	eiDEBUG( s32 userMask = (s32)m_userThreads.GetMask() );
@@ -867,7 +954,9 @@ void* AssetScope::Allocate( AssetStorage& asset, uint size, uint workerIdx )
 		if( m_assetRefreshMode != 0 )
 			return asset.RefreshAlloc( size );
 #endif
-		return m_a.Alloc( size );
+		void* allocation = m_a.Alloc( size );
+		eiASSERT( allocation );
+		return allocation;
 	}
 	return 0;
 }

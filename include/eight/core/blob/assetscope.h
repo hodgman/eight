@@ -28,6 +28,21 @@ private:
 	//}
 };
 
+class AssetsLoadedCallback
+{
+public:
+	AssetsLoadedCallback(callback, void*, TaskSection, const char* dbgName);
+	~AssetsLoadedCallback();
+private:
+	friend class AssetScope;
+	callback fn;
+	void* arg;
+	TaskSection fnTask;
+	AssetsLoadedCallback* next;
+	eiDEBUG( const char* dbgName );
+	eiDEBUG( bool done );
+};
+
 class AssetScope : NonCopyable
 {
 	typedef void* (*PfnAllocate)(uint numBlobs, uint idx, u32 blobSize, BlobLoadContext*, uint workerIdx);//called by all threads. Only 1 thread should return non-null per idx (deterministicly). Can return 0xFFFFFFFF to indicate deliberate NULL.
@@ -66,7 +81,13 @@ public:
 	};
 	template<class F>
 	Asset* Load( AssetName n, BlobLoader& blobs, F& factory )//thread safe
-	{
+	{//can't call if sealed
+		if( m_parent )
+		{
+			Asset* found = m_parent->Find(n);
+			if( found )
+				return found;
+		}
 		FactoryInfo info = 
 		{
 			factory.AssetHandlingThread(),
@@ -84,7 +105,12 @@ public:
 	}
 	Asset* Load( AssetName n, BlobLoader& blobs, void* factory, const FactoryInfo& );//thread safe
 
+	void OnLoaded( AssetsLoadedCallback& );
 private:
+	void OnLoaded();
+
+	Asset* Find( AssetName );
+
 	friend class AssetRootImpl;
 	//{
 	void BeginAssetRefresh();
@@ -92,7 +118,7 @@ private:
 	AssetStorage* Refresh(AssetName, BlobLoader&, Scope& temp, AssetName** depends, uint* numDepends);
 	//}
 	uint Depth();
-	void Resolve(uint worker, uint pass);
+	bool Resolve(uint worker, uint pass);
 	struct FactoryData
 	{
 		Atomic       ready;
@@ -115,6 +141,7 @@ private:
 	//}
 
 	bool IsLoading() const;//if false: loaded but maybe not resolved
+	bool IsLoaded() const;
 
 	FactoryData* FindFactoryBucket(void*, const FactoryInfo&);
 
@@ -134,6 +161,7 @@ private:
 #if defined(eiASSET_REFRESH)
 	Atomic m_assetRefreshMode;
 #endif
+	AtomicPtr<AssetsLoadedCallback> m_onLoaded;
 	const static s32 s_loadingLock = 0x80000000;
 	eiDEBUG( Atomic m_dbgReleased );
 };

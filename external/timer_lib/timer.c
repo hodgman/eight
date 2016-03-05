@@ -79,7 +79,7 @@ void timer_lib_shutdown()
 
 void timer_initialize( timer* time )
 {
-	memset( time, 0, sizeof( time ) );
+	memset( time, 0, sizeof( timer ) );
 
 #if defined( _WIN32 ) || defined( _WIN64 )
 	QueryPerformanceFrequency( (LARGE_INTEGER*)&time->freq );

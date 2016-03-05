@@ -14,6 +14,23 @@
 using namespace eight;
 //------------------------------------------------------------------------------
 
+/*
+namespace ispc
+{ extern "C" {
+	struct Vec4;
+	struct Mat4;
+	struct SphereInfo {
+		u32 id;
+		float depth;
+	};
+	extern void SetupCamera(const Vec4& translation, float angle, const struct Mat4 * world, struct Mat4 * out);
+	extern void SpheresInFrustum(Vec4*, float *, float *, float *, float *, u32 *, u32);
+	extern void SpheresFrustumInfo( const Vec4* planes, const uint* sphere_ids,
+		const float* x, const float* y, const float* z, const float* radius,
+		SphereInfo* out_info, uint count, uint* out_count );
+}}
+*/
+
 void FrustumPlanes::Sphere4InFrustum( const Vec4& x_, const Vec4& y_, const Vec4& z_, const Vec4& w_, Vec4i& output_ )
 {
 	__m128 x = _mm_load_ps(x_.elements);
@@ -47,9 +64,9 @@ struct SphereFrustumArgs
 	Scope& a;
 	Atomic finished;
 };
-int SphereFrustumThreadEntry( void* arg, uint threadIndex, uint numThreads, uint systemId )
+int SphereFrustumThreadEntry( void* arg, ThreadId& thread, uint systemId )
 {
-	if( threadIndex != 0 )
+	if( thread.ThreadIndex() != 0 )
 	{
 		YieldThreadUntil( WaitForTrue(((SphereFrustumArgs*)arg)->finished) );
 		return 0;
@@ -108,7 +125,7 @@ int SphereFrustumThreadEntry( void* arg, uint threadIndex, uint numThreads, uint
 		ids[i] = i;
 	}
 
-	Mat4 matProj = Perspective( DegToRad(80.0f), 1.0f, 0.1, 100 );
+	Mat4 matProj = PerspectiveRH( DegToRad(80.0f), 1.0f, 0.1, 100 );
 	FrustumPlanes planes;
 	planes.Extract( matProj );
 
@@ -202,9 +219,9 @@ struct FluidSimArgs
 	Scope& a;
 	Atomic finished;
 };
-int FluidSimThreadEntry( void* arg, uint threadIndex, uint numThreads, uint systemId )
+int FluidSimThreadEntry( void* arg, ThreadId& thread, uint systemId )
 {
-	if( threadIndex != 0 )
+	if( thread.ThreadIndex() != 0 )
 	{
 		YieldThreadUntil( WaitForTrue(((FluidSimArgs*)arg)->finished) );
 		return 0;

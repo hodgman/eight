@@ -31,12 +31,31 @@ typedef char class_::* memptr;
 typedef void (class_::*memfuncptr)(void*);
 typedef void (*callback)(void*);
 
+typedef u8 sizeone[1];
+typedef u8 sizetwo[2];
+
 template <typename T, int N> uint eiArraySize(T(&)[N]) { return N; } //TODO - move
 
 struct Nil
 {
 	bool operator==( const Nil& ) { return true; }
 };
+
+template<class T> struct Maybe
+{
+	Maybe( const T& v ) : value(v), initialized(true) {}
+	Maybe( const Nil& ) : initialized(false) {}
+	Maybe() : initialized(false) {}
+	union
+	{
+		Nil nil;
+		T value;
+	};
+	bool initialized;
+};
+
+#define eiPTR_TO_U64( x ) ((u64)(intptr_t)(void*)(x))
+#define eiINTPTR_TO_PTR( x ) ((void*)((intptr_t)x))
 
 //------------------------------------------------------------------------------
 } // namespace eight

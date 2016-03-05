@@ -8,7 +8,7 @@
 using namespace eight;
 //------------------------------------------------------------------------------
 
-
+/*
 static inline uint CountBitsSet_Fallback( u32 i )
 {
 	i = i - ((i >> 1) & 0x55555555);
@@ -18,10 +18,6 @@ static inline uint CountBitsSet_Fallback( u32 i )
 
 #ifdef eiBUILD_MSVC
 #include <intrin.h>
-#pragma intrinsic(_BitScanReverse)
-#ifdef eiBUILD_X64
-#pragma intrinsic(_BitScanReverse64)
-#endif
 uint eight::MostSignificantBit( u32 value )
 {
 	unsigned long result;
@@ -101,7 +97,7 @@ uint eight::CountBitsSet( u32 i )
 }
 
 #endif
-
+*/
 eiTEST(Twiddling)
 {
 	for( uint i=0; i<32; ++i )

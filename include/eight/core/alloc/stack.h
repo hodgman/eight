@@ -40,7 +40,7 @@ class StackMeasure : public NonCopyable
 public:
 	StackMeasure() : cursor() {}
 	                  void Clear();
-	                  void Align( uint );
+	                  void Align( uint );//assumes the base address will also be aligned to this value
 	inline            u32 Alloc( u32 size  );
 	template<class T> u32 Alloc(           );
 	template<class T> u32 Alloc( u32 count );

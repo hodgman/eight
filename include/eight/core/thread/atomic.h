@@ -3,7 +3,9 @@
 #include <eight/core/types.h>
 #include <eight/core/debug.h>
 #include <eight/core/thread/pool.h>
+#include <eight/core/profiler.h>
 namespace eight {
+class ThreadId;
 //------------------------------------------------------------------------------
 
 void WriteBarrier();
@@ -12,49 +14,76 @@ void ReadWriteBarrier();
 
 void YieldHardThread();         //Switch to another hardware thread (on the same core)
 void YieldSoftThread();         //Switch to another thread
-void YieldToOS(bool sleep=true);//Switch to the OS kernel. If sleep is true, will block for at least 1ms
-template<class F> void YieldThreadUntil( F&, uint spin=0, bool doJobs=true );
+void YieldToOS(bool sleep=true);//Switch to the OS kernel. If sleep is true, will likely block for at least 1ms
+template<class F> void YieldThreadUntil( F&, uint spin=0, bool doJobs=true, bool willFireWakeEvent=false );
 
+bool WaitForWakeEvent( const ThreadId& );
+void FireWakeEvent( const ThreadId& );
+
+template<bool WillFireWakeEvent>
 struct BusyWait
 {
-	BusyWait(bool doJobs = true) : sleep(), i(), j()
+	BusyWait( bool doJobs = true )
+		: info( (doJobs || WillFireWakeEvent) ? GetThreadId() : 0 )
+		, i()
+		, j()
+		, sleep()
 	{
-		if( doJobs && InPool() )
-			info = CurrentJobPool();
-		else
-			info.jobs = 0;
+		eiASSERT( !WillFireWakeEvent || info );
 	}
-	JobPoolThread info;
+	ThreadId* info;
 	uint i, j;
 	bool sleep;
 	static int defaultSpin;
 	template<class F> inline bool Try( F& func, uint spin=0 )
 	{
-		bool inJobPool = info.jobs != 0;
-		spin = !spin ? defaultSpin : spin;
 		if( func() )
 			return true;
-		if( j++ >= spin )
+		Spin(spin);
+		return false;
+	}
+	inline void Spin(uint spin=0)
+	{
+		JobPool* jobPool = info ? &info->Jobs() : 0;
+		spin = !spin ? defaultSpin : spin;
+		if( j >= spin )
 		{
 			j = 0;
 			if( i++ >= spin )
 			{
 				i = 0;
-				if( !inJobPool || !info.jobs->RunJob( info.threadIndex, info.threadCount ) )
+				if( !jobPool || !jobPool->RunJob( *info ) )
 				{
-					YieldToOS( sleep );
+					if( WillFireWakeEvent && sleep )
+						WaitForWakeEvent( *info );
+					else
+						YieldToOS( sleep );
 					sleep = !sleep;
+				}
+				else if( WillFireWakeEvent )
+				{
+					for( int k=0; k!=4 && jobPool->RunJob( *info ); ++k ){};
 				}
 			}
 			else
 			{
-				if( !inJobPool || !info.jobs->RunJob( info.threadIndex, info.threadCount ) )
+				if( !jobPool || !jobPool->RunJob( *info ) )
 					YieldSoftThread();
+				else if( WillFireWakeEvent )
+				{
+					for( int k=0; k!=4 && jobPool->RunJob( *info ); ++k ){};
+				}
 			}
 		}
-		else if( !inJobPool || !info.jobs->RunJob( info.threadIndex, info.threadCount ) )
+		else if( !jobPool || !jobPool->RunJob( *info ) )
+		{
 			YieldHardThread();
-		return false;
+			++j;
+		}
+		else if( WillFireWakeEvent )
+		{
+			for( int k=0; k!=4 && jobPool->RunJob( *info ); ++k ){};
+		}
 	}
 };
 
@@ -62,6 +91,7 @@ struct WaitFor1;
 struct WaitForTrue;
 struct WaitForFalse;
 struct WaitForValue;
+struct WaitForTrue64;
 
 void AtomicWrite(u32* out, u32 in);
 

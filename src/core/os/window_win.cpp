@@ -407,8 +407,13 @@ uint OsWindow::Height() const
 {
 	return Downcast(this).Height();
 }
+void OsWindow::SetCallbackUser( void* user )
+{
+	Downcast(this)._glfwWin.UserData = user;
+}
 bool OsWindow::PollEvents(uint maxMessages, const Timer* t, float maxTime)
 {
+	eiProfile("OsWindow::PollEvents");
 	return Downcast(this).PollEvents(maxMessages, t, maxTime) | Downcast(this).quitRequest;
 }
 const SingleThread& OsWindow::Thread() const
@@ -422,6 +427,10 @@ void OsWindow::ShowMouseCursor(bool b)
 void OsWindow::Close()
 {
 	Downcast(this).quitRequest = true;
+}
+void* OsWindow::NativeHandle()
+{
+	return Downcast(this)._glfwWin.Wnd;
 }
 
 //========================================================================
@@ -816,6 +825,11 @@ bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* tit
 	{
 		_glfwWin.Width = width-(full_width-width);
 		_glfwWin.Height = height-(full_height-height);
+		full_width = width;
+		full_height = height;
+	}
+	else
+	{
 		full_width = width;
 		full_height = height;
 	}
@@ -1225,7 +1239,7 @@ bool OsWindowWin32::PollEvents(uint maxMessages, const Timer* timer, float maxTi
 	eiASSERT( !timer || maxTime > 0 );
     while( PeekMessage( &msg, NULL, 0, 0, PM_REMOVE ) )
     {
-		double elapsed1 = timer->Elapsed();
+		double elapsed1 = timer ? timer->Elapsed() : 0;
         if( msg.message == WM_QUIT )
             gotQuitMessage = true;
 		else
@@ -1239,7 +1253,7 @@ bool OsWindowWin32::PollEvents(uint maxMessages, const Timer* timer, float maxTi
 			eiInfo(OsWindow, "Hit max messages/frame count (%d)", msgCount);
 			break;
 		}
-		double elapsed2 = timer->Elapsed();
+		double elapsed2 = timer ? timer->Elapsed() : 0;
 		if( timer && elapsed2 >= endTime )
 		{
 			eiInfo(OsWindow, "Hit max messages/frame time-out (%.2fms, %.2fms)", (elapsed2-startTime)*1000, (elapsed2-elapsed1)*1000);

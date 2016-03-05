@@ -17,7 +17,8 @@ struct FutureIndex
 };
 
 class CallBuffer;
-typedef void (FnGeneric)( void* obj, void* args, void* output );
+typedef void (FnMethod)( void* obj, void* args, void* output );
+typedef void (FnFunction)( void* args, void* output );
 typedef FutureIndex (FnPush)( CallBuffer& q, void* obj, void* args, uint size );
 typedef int (FnLua)( lua_State* );
 
@@ -31,7 +32,7 @@ struct MethodBinding
 {
 	const char* name;
 	memfuncptr memfuncptr;
-	FnGeneric* call;
+	FnMethod* call;
 	FnPush* push;
 	FnLua* luaCall;
 	FnLua* luaPush;
@@ -40,6 +41,8 @@ struct FunctionBinding
 {
 	const char* name;
 	callback func;
+	FnFunction* call;
+	FnLua* luaCall;
 };
 
 struct TypeBinding
@@ -51,6 +54,8 @@ struct TypeBinding
 	uint                   methodCount;
 	const FunctionBinding* function;
 	uint                   functionCount;
+	const FunctionBinding* constructor;
+	uint                   constructorCount;
 };
 
 namespace internal {
@@ -67,11 +72,15 @@ namespace internal {
 }
 
 template<class T, memfuncptr fn, class F> void        CallWrapper(void* user, void* argBlob, void* outBlob);
+template<        callback   fn, class F> void       FnCallWrapper(void* user, void* argBlob, void* outBlob);
 template<class T, memfuncptr fn, class F> FutureIndex PushWrapper(CallBuffer& q, void* user, void* argBlob, uint size);
-template<class T, memfuncptr fn, class F> FnGeneric*  GetCallWrapper(F f=0) { return &CallWrapper<T,fn,F>; }
-template<class T, memfuncptr fn, class F> FnPush*     GetPushWrapper(F f=0) { return &PushWrapper<T,fn,F>; }
-namespace lua {
+template<class T, memfuncptr fn, class F> FnMethod*   GetCallWrapper(F f=0)   { return &CallWrapper<T,fn,F>; }
+template<         callback   fn, class F> FnFunction* GetFnCallWrapper(F f=0) { return &FnCallWrapper<fn,F>; }
+template<class T, memfuncptr fn, class F> FnPush*     GetPushWrapper(F f=0)   { return &PushWrapper<T,fn,F>; }
+
+
 template<class T, memfuncptr fn, class F> int         LuaCallWrapper(lua_State* luaState);
+template<         callback   fn, class F> int       LuaFnCallWrapper(lua_State* luaState);
 template<class T, memfuncptr fn, class F> int         LuaPushWrapper(lua_State* luaState);
 template<int mode> struct GetLuaWrapper
 {
@@ -93,11 +102,17 @@ template<> struct GetLuaWrapper<internal::LuaBindMode::LuaCallAndPush>
 	template<class T, memfuncptr fn, class F> static FnLua* Call(F f=0) { return &LuaCallWrapper<T,fn,F>; }
 	template<class T, memfuncptr fn, class F> static FnLua* Push(F f=0) { return &LuaPushWrapper<T,fn,F>; }
 };
-/*
-template<int mode, class T, memfuncptr fn, class F> FnLua* GetLuaCallWrapper(F f=0) { return &LuaCallWrapper<T,fn,F>; }
-template<int mode, class T, memfuncptr fn, class F> FnLua* GetLuaPushWrapper(F f=0) { return &LuaPushWrapper<T,fn,F>; }
-*/
-}//namespace lua
+template<int mode> struct GetFnLuaWrapper
+{
+	template<callback fn, class F> static FnLua* Call(F f=0) { return &LuaFnCallWrapper<fn,F>; }
+};
+template<> struct GetFnLuaWrapper<internal::LuaBindMode::LuaPush>
+{
+	template<callback  fn> static FnLua* Call(...) { return 0; }
+};
+
+#define eiLuaFnCallWrapper(a) eight::GetFnLuaWrapper<eight::internal::LuaBindMode::LuaCall>::Call<(eight::callback)&a>(&a)
+#define eiLuaCallWrapper(a  ) eight::GetLuaWrapper<  eight::internal::LuaBindMode::LuaCall>::Call<(eight::callback)&a>(&a)
 
 //------------------------------------------------------------------------------
 
@@ -117,6 +132,12 @@ template<int mode, class T, memfuncptr fn, class F> FnLua* GetLuaPushWrapper(F f
 	eiBindStruct_Internal(a)															//
 
 
+#define eiBindGlobal( a )																\
+	struct Globals##a;	eiBindStruct( Globals##a )										//
+
+
+//-V:eiLuaBind:561
+
 //------------------------------------------------------------------------------
 #define eiBindStruct_Internal( a )														\
 	{																					\
@@ -128,6 +149,7 @@ template<int mode, class T, memfuncptr fn, class F> FnLua* GetLuaPushWrapper(F f
 		const DataBinding*     _data = 0; uint _dataSize = 0;	/* defaults */			\
 		const MethodBinding*   _meth = 0; uint _methSize = 0;							\
 		const FunctionBinding* _func = 0; uint _funcSize = 0;							\
+		const FunctionBinding* _cons = 0; uint _consSize = 0;							\
 		const LuaBindMode::Type _lua = NoLuaBind;										\
 		{																				//
 # define eiLuaBind( mode )																\
@@ -141,30 +163,50 @@ template<int mode, class T, memfuncptr fn, class F> FnLua* GetLuaPushWrapper(F f
 # define eiEndData()																	\
 			};																			\
 			_data = s_data;																\
-			_dataSize = eiArraySize(s_data);												//
+			_dataSize = eiArraySize(s_data);											//
 
 # define eiBeginMethods()																\
 			const static MethodBinding s_meth[] = {										//
-
 #   define eiBindMethod( a )															\
 				{ #a, (memfuncptr)&T::a,												\
 				  GetCallWrapper<T,(memfuncptr)&T::a>(&T::a),							\
 				  GetPushWrapper<T,(memfuncptr)&T::a>(&T::a),							\
-				  lua::GetLuaWrapper<_lua&LuaCallAndPush>::Call<T,(memfuncptr)&T::a>(&T::a),		\
-				  lua::GetLuaWrapper<_lua&LuaCallAndPush>::Push<T,(memfuncptr)&T::a>(&T::a) },		//
+				  GetLuaWrapper<_lua&LuaCallAndPush>::Call<T,(memfuncptr)&T::a>(&T::a),	\
+				  GetLuaWrapper<_lua&LuaCallAndPush>::Push<T,(memfuncptr)&T::a>(&T::a) },//
+#   define eiBindExtensionMethod( name, a )												\
+				{ #name, 0,																\
+				  0,																	\
+				  0,																	\
+				  GetFnLuaWrapper<_lua&LuaCallAndPush>::Call<(callback)&a>(&a),			\
+				  0 },																	//todo - implement...
 # define eiEndMethods()																	\
 			};																			\
 			_meth = s_meth;																\
-			_methSize = eiArraySize(s_meth);												//
+			_methSize = eiArraySize(s_meth);											//
 
 # define eiBeginFunctions()																\
-			const static DataBinding s_func[] = {										//
+			const static FunctionBinding s_func[] = {									//
 #   define eiBindFunction( a )															\
-				{ #a, (callback)&a },													//
+				{ #a, (callback)&T::a,													\
+				  GetFnCallWrapper<(callback)&T::a>(&T::a),								\
+				  GetFnLuaWrapper<_lua&LuaCallAndPush>::Call<(callback)&T::a>(&T::a)	\
+				},																		//
 # define eiEndFunctions()																\
 			};																			\
 			_func = s_func;																\
-			_funcSize = eiArraySize(s_func);												//
+			_funcSize = eiArraySize(s_func);											//
+
+# define eiBeginConstructors()															\
+			const static FunctionBinding s_cons[] = {									//
+#   define eiBindFactoryFunction( a )													\
+				{ #a, (callback)&T::a,													\
+				  GetFnCallWrapper<(callback)&T::a>(&T::a),								\
+				  GetFnLuaWrapper<_lua&LuaCallAndPush>::Call<(callback)&T::a>(&T::a)	\
+				},																		//
+# define eiEndConstructors()															\
+			};																			\
+			_cons = s_cons;																\
+			_consSize = eiArraySize(s_cons);											//
 
 #define eiEndBind( )																	\
 			const static TypeBinding s_binding =										\
@@ -173,6 +215,7 @@ template<int mode, class T, memfuncptr fn, class F> FnLua* GetLuaPushWrapper(F f
 				_data, _dataSize,														\
 				_meth, _methSize,														\
 				_func, _funcSize,														\
+				_cons, _consSize,														\
 			};																			\
 			return s_binding;															\
 		}																				\

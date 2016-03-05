@@ -2,9 +2,9 @@
 //inline StackAlloc::StackAlloc()
 //                      : begin(), end(), cursor(), owner() {}
 inline StackAlloc::StackAlloc( void* begin, void* end )
-                      : begin((u8*)begin), end((u8*)end), cursor((u8*)begin), owner() {}
+                      : begin((u8*)begin), end((u8*)end), cursor((u8*)begin), owner() { eiASSERT(begin); }
 inline StackAlloc::StackAlloc( void* begin, uint size )
-                      : begin((u8*)begin), end((u8*)begin+size), cursor((u8*)begin), owner() {}
+                      : begin((u8*)begin), end((u8*)begin+size), cursor((u8*)begin), owner() { eiASSERT(begin); }
 /*inline bool StackAlloc::Valid() const
 {
 	return begin != end;
@@ -36,7 +36,7 @@ inline u8* StackAlloc::Alloc( u32 required, u32 reserve )
 		u8* allocation = cursor;
 		cursor += required;
 		eiASSERT( allocation );
-		eiDEBUG( memset( allocation, 0xCDCDCDCD, required ); )
+		eiDEBUG( memset( allocation, 0xCDCDCDCD, required ); ) //-V575 Function receives an odd argument 
 		return allocation;
 	}
 	return 0;
@@ -58,7 +58,7 @@ inline void StackAlloc::Unwind(const void* p)
 	eiASSERT( p>=begin && p<end && p<=cursor );
 	eiDEBUG( uint bytes = cursor-(u8*)p );
 	cursor = (u8*)p;
-	eiDEBUG( memset( cursor, 0xFEFEFEFE, bytes ) );
+	eiDEBUG( memset( cursor, 0xFEFEFEFE, bytes ) ); //-V575 Function receives an odd argument 
 }
 inline const u8* StackAlloc::Mark() const
 {

@@ -168,7 +168,7 @@ const static float eiHalfPif = (float)eiHalfPi;
 
 template<class T> T DegToRad(T x) { return x * (T)(eiPi / 180.0); }
 
-inline const Mat4 Perspective( float fovy, float aspect, float zNear, float zFar )
+inline const Mat4 PerspectiveRH( float fovy, float aspect, float zNear, float zFar )
 {
 	float f = tanf( eiHalfPif - fovy*0.5f );
 	float invRange = 1.0f / ( zNear - zFar );
@@ -177,19 +177,23 @@ inline const Mat4 Perspective( float fovy, float aspect, float zNear, float zFar
 			{ f / aspect, 0.0f, 0.0f,                     0.0f },
 			{ 0.0f,       f,    0.0f,                     0.0f },
 			{ 0.0f,       0.0f, (zNear+zFar) * invRange, -1.0f },
-			{ 0.0f,       0.0f, 2*zNear*zFar * invRange,  0.0f }
+			{ 0.0f,       0.0f,  zNear*zFar  * invRange,  0.0f }
 		}
 	};
-/*	float f = 1.0f/tanf( fovy*0.5f );
+	return result;
+}
+inline const Mat4 PerspectiveLH( float fovy, float aspect, float zNear, float zFar )
+{
+	float f = 1.0f/tanf( fovy*0.5f );
 	float invRange = 1.0f / ( zFar - zNear );
 	Mat4 result = {
 		{
 			{ f / aspect, 0.0f, 0.0f,                    0.0f },
 			{ 0.0f,       f,    0.0f,                    0.0f },
-			{ 0.0f,       0.0f, zFar * invRange,         1.0f },
+			{ 0.0f,       0.0f,        zFar * invRange,  1.0f },
 			{ 0.0f,       0.0f, -zNear*zFar * invRange,  0.0f }
 		}
-	};*/
+	};
 	return result;
 }
 
@@ -328,12 +332,27 @@ inline const Mat4 FullInverse(const Mat4& mat)
 
 	det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
 
-	eiASSERT(det != 0);
+//	eiASSERT(det != 0);
 
 	det = 1.0f / det;
 
 	for (i = 0; i < 16; i++)
 		invOut[i] = inv[i] * det;
+	return result;
+}
+
+
+inline Mat4 MatrixLerp(const Mat4& a, const Mat4& b, float f)
+{
+	//todo - reorthonormalize
+	Vec4 x = Normalize3D(Lerp3D(a[0], b[0], f));
+	Vec4 y = Normalize3D(Lerp3D(a[1], b[1], f));
+	Vec4 z = Normalize3D(Lerp3D(a[2], b[2], f));
+	Vec4 o = Lerp3D(a[3], b[3], f);
+	o[3] = 1;
+	Mat4 result = {{
+		x,y,z,o
+	}};
 	return result;
 }
 

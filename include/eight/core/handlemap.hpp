@@ -1,5 +1,5 @@
 
-HandleMap::HandleMap( Scope& a, uint capacity )
+inline HandleMap::HandleMap( Scope& a, uint capacity )
 	: m_h2p( eiAllocArray(a, u16, capacity) )
 	, m_p2h( eiAllocArray(a, u16, capacity) )
 	eiDEBUG( COMMA dbg_capacity(capacity) )
@@ -7,21 +7,21 @@ HandleMap::HandleMap( Scope& a, uint capacity )
 	Clear(capacity);
 }
 
-u16 HandleMap::ToPhysical( uint handle ) const
+inline u16 HandleMap::ToPhysical( uint handle ) const
 {
 	eiASSERT( handle < dbg_capacity );
 	eiASSERT( handle == m_p2h[m_h2p[handle]] );
 	return m_h2p[handle];
 }
 
-u16 HandleMap::ToHandle( uint physical ) const
+inline u16 HandleMap::ToHandle( uint physical ) const
 {
 	eiASSERT( physical < dbg_capacity );
 	eiASSERT( physical == m_h2p[m_p2h[physical]] );
 	return m_p2h[physical];
 }
 
-u16 HandleMap::AllocHandleToPhysical( u16 handle )
+inline u16 HandleMap::AllocHandleToPhysical( u16 handle )
 {
 	u16 physical = m_size++;
 	eiASSERT( m_p2h[physical] == 0xFFFFU );
@@ -31,7 +31,7 @@ u16 HandleMap::AllocHandleToPhysical( u16 handle )
 	return physical;
 }
 
-HandleMap::MoveCmd HandleMap::EraseHandle( u16 handle )
+inline HandleMap::MoveCmd HandleMap::EraseHandle( u16 handle )
 {
 	eiASSERT( m_size && handle != 0xFFFFU );
 	u16 physical = m_h2p[handle];
@@ -46,7 +46,7 @@ HandleMap::MoveCmd HandleMap::EraseHandle( u16 handle )
 	return cmd;
 }
 
-void HandleMap::Clear(uint capacity)
+inline void HandleMap::Clear(uint capacity)
 {
 	eiASSERT( capacity == dbg_capacity );
 	m_size = 0;

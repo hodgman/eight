@@ -72,13 +72,15 @@ static void SortSchedule(Scope& a, TaskGroupProto** groups, uint count)
 	u[0] = u[1]&0x3fFFffFF;
 }*/
 
-TaskSchedule eight::MakeSchedule( Scope& a, TaskGroupProto** groups, uint count, bool sorted )
+TaskSchedule eight::MakeSchedule( Scope& a_, TaskGroupProto** groups, uint count, bool sorted )
 {
 	if( !sorted )
-		SortSchedule( a, groups, count );
+		SortSchedule( a_, groups, count );
 
 	StackMeasure measureTasks;
 	measureTasks.Alloc<TaskBlob>();
+
+	StackAlloc& a = a_.InternalAlloc();
 
 	TaskScheduleBlob* schedule = eiAlloc(a, TaskScheduleBlob);
 	{
@@ -111,7 +113,7 @@ TaskSchedule eight::MakeSchedule( Scope& a, TaskGroupProto** groups, uint count,
 			output->dependencyFlags = flags;
 			schedule->groups[i] = output;
 		}
-		schedule->bytes = a.Tell() - (u8*)schedule;
+		schedule->bytes = a.Mark() - (u8*)schedule;
 	}
 
 	uint taskBlobSize = measureTasks.Bytes();

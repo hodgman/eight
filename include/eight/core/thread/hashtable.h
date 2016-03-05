@@ -27,11 +27,11 @@ struct HashTableBase
 			{
 			s16 free;//when in free list, holds offsNextMinusOne
 			s16 chain;//when in a bucket chain, holds offsNextMinusOne and the above is 0xFFFF
-			};
-			s32 value;
+			} b;
+			u32 value;
 		};
 	};
-	struct WaitForValid
+	struct WaitForValid : NonCopyable
 	{
 		WaitForValid( const Next& a ) : offsNextMinusOne(a) {} const Next& offsNextMinusOne; 
 		bool operator()() const;
@@ -49,14 +49,21 @@ public:
 	THashTableBase( Scope& a, uint capacity, uint numBuckets );
 	bool Find( const K& k, int& outIndex );
 	bool Insert( const K& k, int& outIndex );
-	V& At( int i ) { eiASSERT(i>=0 && i<(int)capacity); return valueList[i]; }
+	u32 Index( const V* value )
+	{
+		ptrdiff_t index = value - valueList;
+		eiASSERT( index >=0 && index<(ptrdiff_t)capacity );
+		return (u32)index;
+	}
+	      V& At( int i )       { eiASSERT(i>=0 && i<(int)capacity); return valueList[i]; }
+	const V& At( int i ) const { eiASSERT(i>=0 && i<(int)capacity); return valueList[i]; }
 	V& operator[]( const K& k )
 	{
 		int i=-1;
 		Insert( k, i );
 		return At(i);
 	}
-	//todo - document (lack of) thread safety? dont insert during enumeration.
+	//todo - document (lack of) thread safety -- i.e. don't insert during enumeration.
 	template<class Fn> void ForEach( Fn& fn )
 	{
 		for( u32 bucket=0, end=numBuckets; bucket!=end; ++bucket )
@@ -68,9 +75,9 @@ public:
 				{
 					eiASSERT( index < (int)capacity );
 					Node& node = keyList[index];
-					eiASSERT( node.offsNextMinusOne.free == (s16)0xFFFF );
+					eiASSERT( node.offsNextMinusOne.b.free == (s16)(u16)0xFFFF );
 					fn( node.key, valueList[index] );
-					next = index+node.offsNextMinusOne.chain+1;
+					next = index+node.offsNextMinusOne.b.chain+1;
 				}
 			}
 		}
@@ -86,10 +93,10 @@ public:
 				{
 					eiASSERT( index < (int)capacity );
 					Node& node = keyList[index];
-					eiASSERT( node.offsNextMinusOne.free == (s16)0xFFFF );
+					eiASSERT( node.offsNextMinusOne.b.free == (s16)(u16)0xFFFF );
 					if( fn( node.key, valueList[index] ) )
 						return;
-					next = index+node.offsNextMinusOne.chain+1;
+					next = index+node.offsNextMinusOne.b.chain+1;
 				}
 			}
 		}
@@ -133,16 +140,16 @@ template<class K, class V>
 class HashTable : public THashTableBase<K,V,false>
 {
 public:
-	HashTable( Scope& a, uint capacity )                  : THashTableBase( a, capacity ) {}
-	HashTable( Scope& a, uint capacity, uint numBuckets ) : THashTableBase( a, capacity, numBuckets ) {}
+	HashTable( Scope& a, uint capacity )                  : THashTableBase<K,V,false>( a, capacity ) {}
+	HashTable( Scope& a, uint capacity, uint numBuckets ) : THashTableBase<K,V,false>( a, capacity, numBuckets ) {}
 };
 
 template<class K, class V>
 class MpmcHashTable : public THashTableBase<K,V, true>
 {
 public:
-	MpmcHashTable( Scope& a, uint capacity )                  : THashTableBase( a, capacity ) {}
-	MpmcHashTable( Scope& a, uint capacity, uint numBuckets ) : THashTableBase( a, capacity, numBuckets ) {}
+	MpmcHashTable( Scope& a, uint capacity )                  : THashTableBase<K,V,true>( a, capacity ) {}
+	MpmcHashTable( Scope& a, uint capacity, uint numBuckets ) : THashTableBase<K,V,true>( a, capacity, numBuckets ) {}
 };
 
 //------------------------------------------------------------------------------

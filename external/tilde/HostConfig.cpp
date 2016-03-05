@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #include <stdio.h>
 #include <string.h>
-#if defined(WIN32)
+#if defined(eiBUILD_WINDOWS)
 	#include <windows.h>
 #endif
 
@@ -54,7 +54,7 @@ namespace tilde
 		_snprintf(s_printBuffer, sizeof(s_printBuffer), "Assertion failed at %s:%d; %s\n", file, line, exp);
 
 		OutputDebugString(s_printBuffer);
-		printf(s_printBuffer);
+		printf("%s", s_printBuffer);
 		DebugBreak();
 		exit(1);
 #else
@@ -77,7 +77,7 @@ namespace tilde
 		strcat(s_printBuffer, "\n");
 
 		OutputDebugString(s_printBuffer);
-		printf(s_printBuffer);
+		printf("%s", s_printBuffer);
 		DebugBreak();
 		exit(1);
 #else
@@ -95,7 +95,7 @@ namespace tilde
 		va_end(ap);
 
 		OutputDebugString(s_printBuffer);
-		printf(s_printBuffer);
+		printf("%s", s_printBuffer);
 #endif // defined(WIN32)
 	}
 }

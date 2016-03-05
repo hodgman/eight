@@ -13,16 +13,17 @@ namespace eight {
 struct Handle
 {
 	Handle(void*p) : ptr(p) {}
-	Handle(uint i) : id(i) {}
+	Handle(ptrdiff_t i) : id(i) {}
 	union
 	{
-		void* ptr;
-		uint  id;
+		void*     ptr;
+		ptrdiff_t id;
 	};
 	bool operator!() const { return !ptr; }
 	bool operator!=(void* v) const { return ptr != v; }
 	bool operator==(uint  i) const { return id  == i; }
 };
+eiSTATIC_ASSERT( sizeof(Handle) == sizeof(void*) );
 
 struct AssetName
 {
@@ -47,7 +48,7 @@ struct Asset : NonCopyable
 //public:
 //	bool Loaded() const { return !!m_handle; }
 protected:
-	uint Id() const { return m_handle.id; }
+	ptrdiff_t Id() const { return m_handle.id; }
 	u8* Data() { return (u8*)m_handle.ptr; }
 //	template<class T> T* Data()       { eiASSERT(m_handle); return (T*)m_handle.ptr; }
 	Handle m_handle;

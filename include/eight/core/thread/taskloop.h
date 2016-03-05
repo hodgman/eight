@@ -4,6 +4,9 @@
 #include <eight/core/types.h>
 #include <eight/core/thread/tasksection.h>
 #include <eight/core/thread/latent.h>
+
+extern int g_profilersRunning;//TODO - hax
+extern int g_profileFramesLeft;
 namespace eight {
 //------------------------------------------------------------------------------
 
@@ -13,6 +16,7 @@ class TaskSection;
 struct LoopTasks;
 
 eiInfoGroup( TaskLoop, false );
+
 
 class TaskLoop
 {
@@ -35,13 +39,35 @@ public:
 	ConcurrentFrames::Type MaxConcurrentFrames() const { return (ConcurrentFrames::Type)m_numAllocs; }
 
 	void Run( uint workerIdx, uint numWorkers );
+	void RunBackground();
 
 	uint Frame() const;//returns the frame that the current thread is executing
-	
-	static int ThreadMain( void* arg, uint workerIdx, uint numWorkers, uint systemId )
+
+	static int BackgroundThreadMain( void* arg, ThreadId& thread, uint systemId )
 	{
+#if ENABLE_PROFILE_ON_STARTUP
+		if( eight::ProfileBegin() )
+		{
+			g_profilersRunning += 1;
+			g_profileFramesLeft = 30;
+		}
+#endif
 		TaskLoop& loop = *reinterpret_cast<TaskLoop*>(arg);
-		loop.Run(workerIdx, numWorkers);
+		loop.RunBackground();
+		return 0;
+	}
+
+	static int ThreadMain( void* arg, ThreadId& thread, uint systemId )
+	{
+#if ENABLE_PROFILE_ON_STARTUP
+		if( eight::ProfileBegin() )
+		{
+			g_profilersRunning += 1;
+			g_profileFramesLeft = 30;
+		}
+#endif
+		TaskLoop& loop = *reinterpret_cast<TaskLoop*>(arg);
+		loop.Run( thread.ThreadIndex(), thread.NumThreadsInPool() );
 		return 0;
 	}
 private:
@@ -59,6 +85,7 @@ private:
 	u8*               m_scratchMem;
 	SingleThread      m_initialTask;
 	Atomic            m_initialized;
+	Atomic            m_thatsAllFolks;
 	const u32         m_numAllocs;
 	LoopTasks*        m_tasks;
 	Scope**           m_scratchBuffers;

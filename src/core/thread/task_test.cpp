@@ -16,7 +16,7 @@ using namespace eight;
 //-------------------------------------------------------------------
 //-------------------------------------------------------------------
 
-
+#if 0
 
 //-------------------------------------------------------------------
 #if eiDEBUG_LEVEL != 0
@@ -306,8 +306,8 @@ static int BasicTest_Worker(void* arg, uint threadIndex, uint numThreads, uint s
 {/*
 	BasicTest_Data& args = *(BasicTest_Data*)arg;
 	Scope& a = *args.a;
-	TaskSchedule& s = *args.s;
-	return 0;*/
+	TaskSchedule& s = *args.s;*/
+	return 0;
 }
 static void BasicTest(Scope& a)
 {/*
@@ -513,3 +513,5 @@ void TestAB(Timer& timer)
 	printf( "2) %.2f    %.2f      %.2f\n", v2Total, v2Derived, v2Base );
 	printf( "3) %.2f    %.2f      %.2f\n", v3Total, v3Derived, v3Base );*/
 }
+
+#endif

@@ -32,6 +32,9 @@ message.cpp
 message.h
 tuple.h
 soa.h 
+profiler_json.cpp
+profiler.cpp
+profiler.h
  )
  
 AddSourceGroup( Math
@@ -39,6 +42,7 @@ math/arithmetic.h
 math/tmp.h
 math/matrix.h
 math/vector.h
+math/half.h
 math/frustum.h
 math/frustum.ispc
 math/frustum.cpp
@@ -127,6 +131,7 @@ bit/twiddling.h
  
 AddSourceGroup( OS   
 os/window_win.cpp 
+os/input_win.cpp 
 os/win32.h
 os/window.h
 os/window_impl.h 

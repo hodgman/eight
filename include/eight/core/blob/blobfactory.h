@@ -3,6 +3,7 @@
 #include "loader.h"
 #include "asset.h"
 #include <eight/core/typeinfo.h>
+#include <eight/core/blob/assetscope.h>
 namespace eight {
 //------------------------------------------------------------------------------
 
@@ -99,7 +100,7 @@ protected:
 			h = self->Acquire( numBlobs, data, size, *context.scope, loader, *asset );
 		}
 		asset->Assign( h );
-		eiASSERT( asset->Data() );
+		eiASSERT( !h || asset->Data() );
 		context.scope->OnBlobLoaded(*asset);
 	}
 };

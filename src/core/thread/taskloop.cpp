@@ -2,6 +2,7 @@
 #include <eight/core/alloc/new.h>
 #include <eight/core/thread/taskloop.h>
 #include <eight/core/debug.h>
+#include <stdlib.h>
 
 namespace eight
 {
@@ -23,6 +24,7 @@ TaskLoop::TaskLoop( Scope& a, void* user, FnUserInitThread i,
         : m_memSize(totalStackSize), m_mem(eiAllocArray(a,u8,m_memSize))
 		, m_scratchSize(frameScratchSize), m_scratchMem(eiAllocArray(a,u8,m_scratchSize))
 		, m_numAllocs((uint)concurrentFrames), m_tasks(eiAllocArray(a,LoopTasks,m_numAllocs))
+		, m_tlsFrame()
 {
 	eiASSERT( m_mem && m_memSize );
 	eiASSERT( m_scratchMem && m_scratchSize );
@@ -84,6 +86,7 @@ void TaskLoop::Run(uint workerIdx, uint numWorkers)
 			eiEndSection( tasks.completedInterrupt );
 			eiWaitForSection( tasks.completedInterrupt );
 		}
+		eiProfile("TaskLoop Frame");
 
 	/*	if( m_numAllocs == 3 )
 		{
@@ -132,11 +135,22 @@ void TaskLoop::Run(uint workerIdx, uint numWorkers)
 		allocId = frame % m_numAllocs;
 	}
 	ExitLoop();
+	exit(0);//hack hack
+}
+void TaskLoop::RunBackground()
+{
+	BusyWait<true> spinner;
+	while( m_thatsAllFolks == 0 )
+	{
+		void HackHackLoader();
+		HackHackLoader();
+		spinner.Spin();
+	}
 }
 
 uint TaskLoop::Frame() const
 {
-	return *m_tlsFrame[internal::_ei_thread_id->index];
+	return m_tlsFrame ? *m_tlsFrame[internal::_ei_thread_id->index] : 0;
 }
 
 void TaskLoop::PrepareNextFrameGate(Scope& a, Semaphore& s, TaskSection& frameTask, u32 thisFrame, void* userThread, void* prevTask, uint worker, uint numWorkers)
@@ -182,30 +196,27 @@ void TaskLoop::EnterLoop(Scope& a, void* userThread, uint* frame, uint workerIdx
 		for( uint i=0; i!=numScratchBuffers; ++i )
 		{
 			uint beginMem, endMem;
-			DistributeTask( i, numScratchBuffers, m_scratchSize, beginMem, endMem );
+			DistributeTask( i, numScratchBuffers, m_scratchSize/4, beginMem, endMem );
 			StackAlloc* stack = eiNew( a, StackAlloc )( m_scratchMem+beginMem, endMem-beginMem );
 			m_scratchBuffers[i] = eiNew( a, Scope )( *stack, "Scratch" );
 		}
+		m_tlsFrame[workerIdx] = frame;
 		PrepareFrame(a, workerIdx, 0, userThread, 0);
 		m_initialized = numWorkers;
 		mainThread = true;
 	}
 	eiEndSection( m_initialTask );
 	if( !mainThread )
+	{
 		YieldThreadUntil( WaitForTrue(m_initialized) );
-
-	eiASSERT( frame );
-	m_tlsFrame[workerIdx] = frame;
-}
-
-void TaskLoop::ExitLoop()
-{
-	m_initialized--;
-	YieldThreadUntil( WaitForFalse(m_initialized) );
+		eiASSERT( frame );
+		m_tlsFrame[workerIdx] = frame;
+	}
 }
 
 inline void TaskLoop::PrepareFrameAndUnwind(Scope& a, uint workerIdx, uint frame, void* userThread, void* prevTask, uint numWorkers)
 {
+	eiProfile("PrepareFrameAndUnwind");
 	eiInfo(TaskLoop, "%d > prepare next frame\n", internal::_ei_thread_id->index);
 	uint allocId = frame % m_numAllocs;
 	for(int i=0; i!=numWorkers; ++i)
@@ -229,4 +240,12 @@ Scope& TaskLoop::GetScratch(uint allocId, uint thread)
 {
 	eiASSERT( allocId < m_numAllocs );
 	return *m_scratchBuffers[allocId+thread*m_numAllocs];
+}
+
+//#pragma optimize("",off)//!!!!!
+void TaskLoop::ExitLoop()
+{
+	m_initialized--;
+	YieldThreadUntil( WaitForFalse(m_initialized), 5, false );//TODO - drain job queue before leaving loop to begin with!?
+	m_thatsAllFolks = 1;
 }

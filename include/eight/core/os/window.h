@@ -125,6 +125,7 @@ struct OsWindowArgs
 	int width, height;
 	WindowMode::Type mode;
 	const char* title;
+	int refresh, adapter;
 };
 
 class OsWindow : NonCopyable
@@ -152,6 +153,7 @@ public:
 
 	static OsWindow* New( Scope& a, const SingleThread&, const OsWindowArgs&, const Callbacks& );
 
+	void SetCallbackUser( void* );
 	bool PollEvents(uint maxMessages=0, const Timer* t=0, float maxTime=0);//returns true if application exit event occurred
 
 	const SingleThread& Thread() const;
@@ -159,6 +161,8 @@ public:
 	void ShowMouseCursor(bool b);
 
 	void Close();
+
+	void* NativeHandle();
 };
 
 template<class T>
@@ -177,6 +181,21 @@ OsWindow::Callbacks OsWindowCallbacks(T& o)
 	OsWindow::Callbacks c = 
 	{
 		&o,
+		&BindToOsWindow<T>::s_WindowSize,
+		&BindToOsWindow<T>::s_MouseButton,
+		&BindToOsWindow<T>::s_MousePos,
+		&BindToOsWindow<T>::s_MouseWheel,
+		&BindToOsWindow<T>::s_Key,
+		&BindToOsWindow<T>::s_Char
+	};
+	return c;
+}
+template<class T>
+OsWindow::Callbacks OsWindowCallbacks()
+{
+	OsWindow::Callbacks c = 
+	{
+		0,
 		&BindToOsWindow<T>::s_WindowSize,
 		&BindToOsWindow<T>::s_MouseButton,
 		&BindToOsWindow<T>::s_MousePos,

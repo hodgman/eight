@@ -5,6 +5,7 @@
 #include <eight/core/blob/loader.h>
 #include <eight/core/thread/atomic.h>
 #include <eight/core/thread/fifo_mpmc.h>
+#include <eight/core/thread/pool.h>
 #include <eight/core/alloc/new.h>
 
 //------------------------------------------------------------------------------
@@ -220,9 +221,11 @@ public:
 
 	BlobLoader::States Prepare();
 	bool Load(const AssetName& name, const BlobLoader::Request& req);//call at any time from any thread
-	void Update(uint worker, bool);//should be called by all threads
+	void Update(uint worker, bool);//should be called by all threads in the main pool
+	void UpdateBackground();//should be called by all threads in the background pool
 	void ImmediateDevLoad(const char* path, const BlobLoader::ImmediateDevRequest&);
 
+	const static int MAX_BLOBS = 4;
 private:
 	void FreeManifest();
 	void LoadManifest();
@@ -235,7 +238,6 @@ private:
 	};};
 	struct LoadItem
 	{
-		const static int MAX_BLOBS = 3;
 		OVERLAPPED overlapped[MAX_BLOBS];
 		BlobLoader::Request request;
 		HANDLE file;
@@ -254,27 +256,47 @@ private:
 	const char* FullPath( char* buf, int bufSize, const char* name, int nameLen );
 	const char* FullDevPath( char* buf, int bufSize, const char* name, int nameLen );
 	bool StartLoad(QueueItem& name);
-	bool UpdateLoad(LoadItem& item, uint worker);
+	bool UpdateLoad(LoadItem& item, uint worker, uint& state);
 	static VOID WINAPI OnComplete(DWORD errorCode, DWORD numberOfBytesTransfered, OVERLAPPED* overlapped);
 	static VOID WINAPI OnManifestComplete(DWORD errorCode, DWORD numberOfBytesTransfered, OVERLAPPED* overlapped);
 
 	const TaskLoop& m_loop;
 	AssetManifestDevWin32* m_manifest;
 	LatentMpsc<QueueItem> m_queue;
+	Futex m_haxLock;
 	InactiveArray<LoadItem> m_loads;
-	int m_pendingLoads;
 	const char* const m_baseDevPath;
 	const char* const m_basePath;
 	const int m_baseLength;
+	Atomic m_pendingLoads;
 	const char* const m_manifestFilename;
 	SingleThread m_osUpdateTask;
 	HANDLE m_manifestFile;
 	OVERLAPPED* m_manifestLoad;
 	uint m_manifestSize;
+	JobPool& m_backgroundJobs;
 	eiDEBUG( Atomic dbg_updating; )
 
 	friend const SingleThread& OsThread(BlobLoader&);
 	friend void ReloadManifest(BlobLoader&);
+
+	struct LoadJob
+	{
+		LoadItem* item;
+		Atomic* pPendingLoads;
+		void BeginRead();
+		static void s_BeginRead(void* arg, ThreadId&) { ((LoadJob*)arg)->BeginRead(); };
+	};
+	struct OpenHandleJob
+	{
+		LoadItem* item;
+		AssetManifestDevWin32::AssetInfo info;
+		char path[MAX_PATH];
+		AssetName name;
+		const char* factoryName;
+		void OpenHandle();
+		static void s_OpenHandle(void* arg, ThreadId&) { ((OpenHandleJob*)arg)->OpenHandle(); };
+	};
 };
 
 //------------------------------------------------------------------------------

@@ -6,24 +6,53 @@ namespace eight {
 //------------------------------------------------------------------------------
 class Scope;
 class Atomic;
+class JobPool;
 
-typedef int(FnPoolThreadEntry)( void* arg, uint threadIndex, uint numThreads, uint systemId );
+class ThreadId : NoCreate
+{
+public:
+	u32 ThreadIndex() const;
+	u32 NumThreadsInPool() const;
+	JobPool& Jobs() const;
+	u32 PoolId() const;
+};
 
-void StartThreadPool( Scope&, FnPoolThreadEntry*, void* arg, int numWorkers=0 );
+typedef int(FnPoolThreadEntry)( void* arg, ThreadId&, uint systemId );
+
+JobPool* StartBackgroundThreadPool( Scope&, FnPoolThreadEntry*, void* arg, int numWorkers=0, Atomic* runningCount=0 );
+void StartThreadPool( Scope&, FnPoolThreadEntry*, void* arg, int numWorkers=0, Atomic* runningCount=0 );
 
 class JobPool : NoCreate
 {
 public:
-	typedef void (FnJob)(void*, uint threadIndex, uint threadCount);
+	typedef void (FnJob)( void*, ThreadId& );
 	struct Job
 	{
 		FnJob* fn;
 		void* arg;
 	};
-	void PushJob( Job, uint threadIndex, uint threadCount );
-	bool RunJob( uint threadIndex, uint threadCount );
+	struct JobList
+	{
+		Job* jobs;
+		uint numJobs;
+		Atomic* nextToExecute;
+	};
+	void PushJob( Job );
+	void PushJob( Job, ThreadId& );
+	void PushJobList( JobList, ThreadId& );
+	bool RunJob( ThreadId& );
+
+	bool WaitForWakeEvent();
+	void FireWakeEvent(uint threadCount);
+
+	u32 Id() const;
 };
 
+bool InPool();
+ThreadId* GetThreadId();
+uint GetOsThreadId();
+
+/*
 struct PoolThread
 {
 	u32 mask;
@@ -41,7 +70,7 @@ struct JobPoolThread
 	uint threadIndex;
 	uint threadCount;
 };
-JobPoolThread CurrentJobPool();
+JobPoolThread CurrentJobPool();*/
 
 //------------------------------------------------------------------------------
 } // namespace eight

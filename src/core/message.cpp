@@ -45,7 +45,7 @@ void CallBuffer::Insert(FutureCall* data)
 	}
 }
 
-FutureCall* CallBuffer::Push( FnGeneric* call, void* obj, uint argSize, uint returnSize )
+FutureCall* CallBuffer::Push( FnMethod* call, void* obj, uint argSize, uint returnSize )
 {
 	FutureCall* data = a.Alloc<FutureCall>();
 	data->call = call;

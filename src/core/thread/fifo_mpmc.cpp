@@ -22,8 +22,10 @@ const static int loops = 0x1000;
 const static int loopTotal = 0;
 const static int s_numThreads = 4;
 
-int ThreadEntry( void* arg, uint threadIndex, uint numThreads, uint systemId )
+int ThreadEntry( void* arg, ThreadId& thread, uint systemId )
 {
+	const uint threadIndex = thread.ThreadIndex();
+	const uint numThreads = thread.NumThreadsInPool();
 	TestData& data = *(TestData*)arg;
 	FifoMpmc<int>& queue = *data.queue;
 

@@ -23,7 +23,8 @@ using namespace eight;
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-void* eight::Malloc( uint size )//TODO - make hookable
+#if defined(eiBUILD_WINDOWS)
+void* eight::Malloc( size_t size )//TODO - make hookable?
 {
 	return malloc( size );
 }
@@ -31,7 +32,7 @@ void eight::Free( void* p )
 {
 	free( p );
 }
-void* eight::AlignedMalloc( uint size, uint align )
+void* eight::AlignedMalloc( size_t size, uint align )
 {
 	return _aligned_malloc( size, align );
 }
@@ -39,6 +40,18 @@ void eight::AlignedFree( void* p )
 {
 	_aligned_free( p );
 }
+
+void* eight::VramAlloc( size_t size, uint align )
+{
+	return AlignedMalloc(size, align);
+}
+void eight::VramFree( void* p )
+{
+	AlignedFree(p);
+}
+#else
+#error
+#endif
 
 
 template<bool> struct IndexMeta       { typedef uint32 Type; const static int size = 32; };
@@ -75,6 +88,7 @@ bool eight::Assert( const char* e, int l, const char* f, const char* fn )
 	}
 	else
 	{
+		DebugOutput( l, f, fn, "Assertion failure - %s", e );
 		//TODO - dialog box
 	}
 	return IsDebuggerAttached();
@@ -83,7 +97,7 @@ bool eight::Assert( const char* e, int l, const char* f, const char* fn )
 static Futex futex;
 void eight::Print( const char* msg )
 {
-	printf(msg);
+	printf("%s", msg);
 }
 void eight::Printf( const char* fmt, ... )
 {

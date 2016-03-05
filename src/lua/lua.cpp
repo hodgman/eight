@@ -3,17 +3,17 @@
 #include "eight/lua/bindlua.h"
 #include "eight/core/test.h"
 #include "eight/core/debug.h"
+#include "eight/core/thread/atomic.h"
 #include <stdio.h>
 
 using namespace eight;
-using namespace lua;
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
 LuaState::LuaState(PackageLoader* loader)
+	: L(luaL_newstate())//todo - pass allocator
 {
-	L = luaL_newstate(); //todo - pass allocator
 	eiCheckLuaStack(L);
 	luaL_openlibs(L);
 	RegisterEngine(L);
@@ -28,15 +28,22 @@ LuaState::~LuaState()
 //------------------------------------------------------------------------------
 
 #ifndef eiBUILD_NO_LUA_TYPESAFETY
-const char* const eight::lua::internal::LuaPointer::s_metatable = "eight.ptr";
+const char* const eight::internal::LuaPointer::s_metaId = "eight.ptr";
 #endif
-const char* const eight::lua::internal::LuaBoxBase::s_metatable = "eight.box";
+const char* const eight::internal::LuaBoxBase::s_metaId = "eight.box";
+const char* const eight::internal::s_cTableHandles = "eight.tables";
 
-void lua::internal::PushMetatable(lua_State *L, void* name)
+Atomic g_tableKey;
+int GetNewLuaTableKey()//fairly dirty...
 {
+	return ++g_tableKey;
+}
+
+void eight::internal::PushMetatable(lua_State *L, void* name)
+{// push registry.name
 	lua_pushlightuserdata(L, name);
 	lua_rawget(L, LUA_REGISTRYINDEX);
-	eiASSERT( !lua_isnil(L, -1) );
+	eiASSERT( !lua_isnil(L, -1) ); 
 }
 static void PushNewMetatable(lua_State *L, void* name)
 {
@@ -50,22 +57,25 @@ static void PushNewMetatable(lua_State *L, void* name)
 	lua_pushvalue(L, -2);
 	lua_rawset(L, LUA_REGISTRYINDEX);  /* registry.name = metatable */
 }
-static void RegisterMetatable(lua_State *L, const char* name)
+static void RegisterMetatable(lua_State *L, const char* name, const char* id)
 {
 	eiCheckLuaStack(L);
-	PushNewMetatable(L, (void*)name);
-	lua_pushlightuserdata(L, (void*)name);
+	PushNewMetatable(L, (void*)name);// push registry.name
+	lua_pushlightuserdata(L, (void*)id);
 	lua_pushvalue(L, -1);
-	lua_rawset(L, -3); // metatable[(void*)name] = (void*)name
+	lua_rawset(L, -3); // registry.name[(void*)id] = (void*)id
+	lua_pushstring(L, "__metatable");
+	lua_pushstring(L, "Private");
+	lua_rawset(L, -3); // registry.name["__metatable"] = "Private"
 #if eiDEBUG_LEVEL > 0
 	lua_pushstring(L, "name");
 	lua_pushstring(L, name);
-	lua_rawset(L, -3); // metatable["name"] = name
+	lua_rawset(L, -3); // registry.name["name"] = name
 #endif
 	lua_pop(L, 1);//pop metatable
 }
 
-void lua::SetPackageLoader(lua_State* L, lua_CFunction f, PackageLoader* data)
+void eight::SetPackageLoader(lua_State* L, lua_CFunction f, PackageLoader* data)
 {
 	eiCheckLuaStack(L);
 	/*
@@ -90,25 +100,32 @@ void lua::SetPackageLoader(lua_State* L, lua_CFunction f, PackageLoader* data)
 	lua_pop(L, 2);
 }
 
-int lua::DefaultPackageLoaderCallback(lua_State* L)
+int eight::DefaultPackageLoaderCallback(lua_State* L)
 {
 	const char* name = lua_tostring(L, 1);
 	PackageLoader* loader = (PackageLoader*)lua_topointer(L, lua_upvalueindex(1));
-	LoadedPackage data;
-	if( !loader || !loader->pfn )
+	if( !loader || !loader->pfnLoad )
 	{
 		lua_pushstring(L, "package loader initialization error");
 		return 1;
 	}
 	else
 	{
-		data = loader->pfn(loader->userdata, name);
+		LoadedPackage data = loader->pfnLoad(loader->userdata, name);
 		if( data.bytes != NULL )
 		{
 			eiASSERT( data.numBytes && data.filename );
-			eiDEBUG( int ok = ) luaL_loadbuffer(L, data.bytes, data.numBytes, data.filename);
-			eiASSERT( ok == 0 );
+			int ok = luaL_loadbuffer(L, data.bytes, data.numBytes, data.filename);
+			if( ok == LUA_ERRSYNTAX )
+			{
+				const char* error = lua_tostring(L, -1);
+				printf("LUA ERROR: %s\n", error);
+				lua_pop(L, 1);
+				return 1;
+			}
 			lua_pushstring(L, data.filename);
+			if( loader->pfnFree )
+				loader->pfnFree(loader->userdata, data);
 			return 2;
 		}
 	}
@@ -116,12 +133,16 @@ int lua::DefaultPackageLoaderCallback(lua_State* L)
 	return 1;
 }
 
-void lua::RegisterEngine(lua_State* L)
+void eight::RegisterEngine(lua_State* L)
 {
 #ifndef eiBUILD_NO_LUA_TYPESAFETY
-	RegisterMetatable(L, internal::LuaPointer::s_metatable);
+	RegisterMetatable(L, internal::LuaPointer::s_metaId, internal::LuaPointer::s_metaId);
 #endif
-	RegisterMetatable(L, internal::LuaBoxBase::s_metatable);
+	RegisterMetatable(L, internal::LuaBoxBase::s_metaId, internal::LuaBoxBase::s_metaId);
+
+	lua_pushlightuserdata(L, (void*)internal::s_cTableHandles);//Push s_cTableHandles
+	lua_newtable(L);//todo - size hint?
+	lua_rawset(L, LUA_REGISTRYINDEX);//registry[s_cTableHandles] = {}, pop table/key
 }
 
 static void PushNewGlobalTable(lua_State *L, const char* name, int nameLen)
@@ -142,7 +163,7 @@ static void PushNewGlobalTable(lua_State *L, const char* name, int nameLen)
 	lua_remove(L, -2); //remove name
 }
 
-void lua::RegisterType(lua_State* L, const TypeBinding& type)
+void eight::RegisterType(lua_State* L, const TypeBinding& type)
 {
 	int nameLen = strlen(type.name);
 	const char pushSuffix[] = "_Push"; eiSTATIC_ASSERT(sizeof(pushSuffix) == 6);//includes terminator
@@ -150,6 +171,7 @@ void lua::RegisterType(lua_State* L, const TypeBinding& type)
 	eiASSERT( nameLen+sizeof(pushSuffix) <= 128 );
 	memcpy(pushTableName, type.name, nameLen);
 	memcpy(pushTableName+nameLen, pushSuffix, sizeof(pushSuffix));
+	PushNewGlobalTable(L, "GcNew", sizeof("GcNew")-1);
 	PushNewGlobalTable(L, type.name, nameLen);
 	PushNewGlobalTable(L, pushTableName, nameLen+sizeof(pushSuffix)-1);
 	for( uint i=0, end=type.methodCount; i!=end; ++i )
@@ -159,19 +181,40 @@ void lua::RegisterType(lua_State* L, const TypeBinding& type)
 		{
 			lua_pushstring(L, method.name);
 			lua_pushcfunction(L, method.luaCall);
-			lua_rawset(L, -4);//table[name] = luaCall
+			lua_rawset(L, -4);//(type.name)[method.name] = method.luaCall
 		}
 		if( method.luaPush )
 		{
 			lua_pushstring(L, method.name);
 			lua_pushcfunction(L, method.luaCall);
-			lua_rawset(L, -3);
+			lua_rawset(L, -3);//(type.name+"_Push")[method.name] = method.luaCall
 		}
 	}
-	lua_pop(L, 2); // pop the tables
+	for( uint i=0, end=type.functionCount; i!=end; ++i )
+	{
+		const FunctionBinding& function = type.function[i];
+		if( function.luaCall )
+		{
+			lua_pushstring(L, function.name);
+			lua_pushcfunction(L, function.luaCall);
+			lua_rawset(L, -4);//(type.name)[function.name] = function.luaCall
+		}
+	}
+	for( uint i=0, end=type.constructorCount; i!=end; ++i )
+	{
+		//TODO - only functions that
+		const FunctionBinding& function = type.constructor[i];
+		if( function.luaCall )
+		{
+			lua_pushstring(L, type.name);
+			lua_pushcfunction(L, function.luaCall);
+			lua_rawset(L, -5);//GcNew[type.name] = function.luaCall
+		}
+	}
+	lua_pop(L, 3); // pop the tables
 }
 
-void lua::internal::LuaTypeError(lua_State* L, int i, const char* expected, const char* received)
+void eight::internal::LuaTypeError(lua_State* L, int i, const char* expected, const char* received)
 {
 	char buffer[256];
 	_snprintf(buffer, 256, "Expected %s, received %s", expected, received);
@@ -179,6 +222,28 @@ void lua::internal::LuaTypeError(lua_State* L, int i, const char* expected, cons
 	luaL_argcheck(L, false, i, buffer);
 }
 
+bool LuaState::DoCode( const char* code )
+{
+	int ok = luaL_loadbuffer(L, code, strlen(code), "HARDCODED" );
+	if( ok == LUA_ERRSYNTAX )
+	{
+		const char* error = lua_tostring(L, -1);
+		printf("LUA ERROR: %s\n", error);
+		lua_pop(L, 1);
+		return false;
+	}
+	//	int ok = luaL_loadstring(lua, code);
+	//eiASSERT( ok == 0 );
+	ok = lua_pcall(L, 0, 0, 0);
+	if( ok == LUA_ERRRUN )
+	{
+		const char* error = lua_tostring(L, -1);
+		printf("LUA ERROR: %s\n", error);
+		lua_pop(L, 1);
+		return false;
+	}
+	return true;
+}
 
 
 //------------------------------------------------------------------------------
@@ -237,7 +302,7 @@ eiTEST( Lua )
 	StackAlloc stack(buffer, 1024);
 	Scope a(stack, "main");
 	Tilde* tilde = Tilde::New(a);
-	PackageLoader testLoader = { (void*)0x1337, &TestLoader };
+	PackageLoader testLoader = { (void*)0x1337, &TestLoader, 0 };
 	LuaState lua( &testLoader );
 	tilde->Register( lua );
 	RegisterType(lua, ReflectTest());
@@ -262,7 +327,7 @@ eiTEST( Lua )
 	if( ok == LUA_ERRRUN )
 	{
 		const char* error = lua_tostring(lua, -1);
-		printf(error);
+		printf("%s", error);
 		lua_pop(lua, 1);
 	}
 	eiASSERT( ok == 0 );

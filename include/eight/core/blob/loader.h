@@ -15,7 +15,7 @@ struct AssetStorage;
 struct AssetName;
 class AssetScope;
 
-struct BlobConfig { const char* path; const char* devPath; uint maxRequests; const char* manifestFile; };
+struct BlobConfig { const char* path; const char* devPath; uint maxRequests; const char* manifestFile; SingleThread osWorkerThread; JobPool* backgroundPool; };
 
 struct BlobLoadContext
 {
@@ -48,6 +48,7 @@ public:
 	};
 	bool Load(const AssetName&, const Request&);//call at any time from any thread. Can fail if internal queues are full and if so should try again next frame.
 	void Update(uint worker, bool inRefreshInterrupt=false);//should be called by all threads each frame
+	void UpdateBackground();//should be called by all threads in the background pool
 
 
 	struct ImmediateDevRequest

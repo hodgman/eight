@@ -1,11 +1,14 @@
 
 template<bool Enumerable>
-PoolBase<Enumerable>::PoolBase( Scope& a, uint size ) : m_size(size), m_free(0), m_offsNextFreeMinusOne(eiAllocArray(a,int,size)), m_used(-1), m_usedLinks(Enumerable ? eiAllocArray(a,Link,size) : 0)
+PoolBase<Enumerable>::PoolBase( Scope& a, uint size ) : m_size(size), m_free(0), m_offsNextFreeMinusOne(size?eiAllocArray(a,int,size):0), m_used(-1), m_usedLinks(Enumerable ? (size?eiAllocArray(a,Link,size):0) : 0)
 {
-	eiASSERT( !Enumerable || size < 0xFFFF );
-	eiDEBUG( if( Enumerable ) memset( m_usedLinks, 0xFFFFFFFF, sizeof(Link)*size ) );
-	memset( m_offsNextFreeMinusOne, 0, sizeof(int)*size );
-	m_offsNextFreeMinusOne[size-1] = -1;
+	if( size )
+	{
+		eiASSERT( !Enumerable || size < 0xFFFF );
+		eiDEBUG( if( Enumerable ) memset( m_usedLinks, 0xFFFFFFFF, sizeof(Link)*size ) );
+		memset( m_offsNextFreeMinusOne, 0, sizeof(int)*size );
+		m_offsNextFreeMinusOne[size-1] = -1;
+	}
 	eiDEBUG( m_dbgCount = 0 );
 }
 
@@ -34,12 +37,18 @@ PoolBase<Enumerable>::PoolBase( Scope& a, uint size ) : m_size(size), m_free(0),
 }*/
 
 template<bool Enumerable>
-void PoolBase<Enumerable>::Dbg_ValidateIndex(uint i)
+void PoolBase<Enumerable>::Dbg_ValidateIndex(uint i) const
 {
 	eiASSERT( i  < m_size );
 	eiASSERT( m_offsNextFreeMinusOne[i] == -1 );
 //	eiASSERT( !Enumerable || m_used==i || (m_usedLinks[i].prev != 0xFFFF && m_usedLinks[i].next != 0xFFFF) );
 	eiASSERT( !Enumerable || m_used==i || (m_usedLinks[i].prev != 0xFFFF || m_usedLinks[i].next != 0xFFFF) );
+}
+
+template<bool Enumerable>
+bool PoolBase<Enumerable>::IsIndexValid(uint i) const
+{
+	return (i < m_size) && (m_offsNextFreeMinusOne[i] == -1);
 }
 
 template<bool Enumerable>
@@ -176,13 +185,13 @@ int PoolBase<Enumerable>::Next(uint index)
 
 //------------------------------------------------------------------------------
 
-template<class T, bool E>
-Pool<T,E>::Pool( Scope& a, uint size ) : m_pool(a, size), m_data(eiAllocArray(a,T,size))
+template<class T, bool E, bool POD>
+Pool<T,E,POD>::Pool( Scope& a, uint size ) : m_pool(a, size), m_data(eiAllocArray(a,T,size))
 {
 }
 
-template<class T, bool E>
-T& Pool<T,E>::operator[](uint i)
+template<class T, bool E, bool POD>
+T& Pool<T,E,POD>::operator[](uint i)
 {
 	eiDEBUG( m_pool.Dbg_ValidateIndex(i) );
 	T& data = m_data[i];
@@ -191,16 +200,26 @@ T& Pool<T,E>::operator[](uint i)
 	return data;
 }
 
-template<class T, bool E>
-uint Pool<T,E>::Index(const T& object)
+template<class T, bool E, bool POD>
+const T& Pool<T,E,POD>::operator[](uint i) const
 {
-	eiASSERT( &object >= m_data && &object < m_data+m_pool.Capactiy() );
-	int index = &object-m_data;
-	return (uint)index;
+	eiDEBUG( m_pool.Dbg_ValidateIndex(i) );
+	T& data = m_data[i];
+	eiDEBUG( u8 null[sizeof(T)]= {}; );
+	eiASSERT( dbgNoMemcmp || memcmp(&data, null, sizeof(T))!=0 );
+	return data;
 }
 
-template<class T, bool E>
-T* Pool<T,E>::Alloc(const T& data)
+template<class T, bool E, bool POD>
+uint Pool<T,E,POD>::Index(const T& object)
+{
+	eiASSERT( &object >= m_data && &object < m_data+m_pool.Capactiy() );
+	ptrdiff_t index = &object-m_data;
+	return (u32)index;
+}
+
+template<class T, bool E, bool POD>
+T* Pool<T,E,POD>::Alloc(const T& data)
 {
 	int index = m_pool.Alloc();
 	if( index < 0 )
@@ -208,7 +227,7 @@ T* Pool<T,E>::Alloc(const T& data)
 	T* t = &m_data[index];
 	eiDEBUG( u8 null[sizeof(T)]= {}; );
 	eiASSERT( dbgNoMemcmp || memcmp(t, null, sizeof(T))==0 );
-	if( s_NonPod )
+	if( !POD )
 		new(t) T(data);
 	else
 		*t = data;
@@ -216,35 +235,38 @@ T* Pool<T,E>::Alloc(const T& data)
 	return t;
 }
 
-template<class T, bool E>
-T* Pool<T,E>::Alloc()
+template<bool> struct TConstruct       { template<class T> static T* Do( T* t ) { return t; } };
+template<    > struct TConstruct<true> { template<class T> static T* Do( T* t ) { return new(t)T; } };
+
+template<class T, bool E, bool POD>
+T* Pool<T,E,POD>::Alloc()
 {
 	int index = m_pool.Alloc();
 	if( index < 0 )
 		return 0;
 	T* t = &m_data[index];
-	return s_NonPod ? new(t) T : t;
+	return TConstruct<!POD>::Do(t);
 }
 
-template<class T, bool E>
-void Pool<T,E>::Release( T* object )
+template<class T, bool E, bool POD>
+void Pool<T,E,POD>::Release( T* object )
 {
 	int index = object-m_data;
 	m_pool.Release( index );
-	if( s_NonPod )
+	if( !POD )
 		object->~T();
 	eiDEBUG( if(!dbgNoMemcmp) memset(object, 0, sizeof(T)) );
 }
 
-template<class T, bool E>
-T* Pool<T,E>::Begin()
+template<class T, bool E, bool POD>
+T* Pool<T,E,POD>::Begin()
 {
 	int begin = m_pool.Begin();
 	return begin < 0 ? 0 : &m_data[begin];
 }
 
-template<class T, bool E>
-T* Pool<T,E>::Next(const T& object)
+template<class T, bool E, bool POD>
+T* Pool<T,E,POD>::Next(const T& object)
 {
 	uint index = Index( object );
 	int next = m_pool.Next( index );

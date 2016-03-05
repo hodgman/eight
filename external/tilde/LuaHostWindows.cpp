@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #include <stdio.h>
 
-#if defined(WIN32)
+#if defined(eiBUILD_WINDOWS)
 	#include <winsock2.h>
 
 	#pragma comment(lib, "wsock32.lib")
@@ -40,6 +40,7 @@ THE SOFTWARE.
 #endif
 
 #include "LuaHostWindows.h"
+#include "winsock2.h"
 
 #include "tilde/LuaDebugger.h"
 #include "tilde/LuaDebuggerComms.h"

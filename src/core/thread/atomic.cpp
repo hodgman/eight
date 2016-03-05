@@ -1,4 +1,7 @@
 #include <eight/core/thread/atomic.h>
+#include <eight/core/thread/pool.h>
+#include <eight/core/thread/tasksection.h>
+#include <eight/core/profiler.h>
 
 #include <eight/core/os/win32.h>
 #include <Winnt.h>
@@ -13,7 +16,8 @@ using namespace eight;
 
 typedef volatile LONG* AtomicIntPtr;
 
-int BusyWait::defaultSpin = 50000;
+int BusyWait<true >::defaultSpin = 1;
+int BusyWait<false>::defaultSpin = 150;
 
 eiInfoGroup( Yield, false );
 
@@ -39,14 +43,27 @@ void eight::YieldHardThread()
 }
 void eight::YieldSoftThread()
 {
+//	eiProfile("YieldSoftThread");
 //	eiInfo(Yield, "SoftThread");
 	SwitchToThread();
 }
 void eight::YieldToOS(bool sleep)
 {
-	eiInfo(Yield, sleep?"Sleep(1)":"Sleep(0)");
+//	eiProfile( sleep ? "YieldToOS(1)" : "YieldToOS(0)" );
+//	eiInfo(Yield, sleep?"Sleep(1)":"Sleep(0)");
 //	Sleep(sleep ? DWORD(1) : DWORD(0));
 	SleepEx(sleep ? DWORD(1) : DWORD(0), TRUE);
+}
+
+
+bool eight::WaitForWakeEvent( const ThreadId& thread )
+{
+	return thread.Jobs().WaitForWakeEvent();
+}
+
+void eight::FireWakeEvent( const ThreadId& thread )
+{
+	thread.Jobs().FireWakeEvent( thread.NumThreadsInPool() );
 }
 
 void eight::AtomicWrite(u32* out, u32 in)

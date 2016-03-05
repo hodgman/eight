@@ -7,12 +7,11 @@
 #include "stdio.h"
 #include "string.h"
 using namespace eight;
-using namespace lua;
 using namespace tilde; 
 
 Tilde* Tilde::New(Scope& a, int port)
 {
-	return (Tilde*)eiNew(a,LuaHostWindows)(port);
+	return (Tilde*)(eiNew(a,LuaHostWindows)(port));//-V572
 }
 
 void Tilde::Register(lua_State* L)

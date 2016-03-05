@@ -34,6 +34,8 @@ extern "C" {
 #include "lua.h"
 }
 
+//-V:TILDE_ASSERT:562
+//-V:TILDE_ASSERT_MSG:562
 
 #define TILDE_ASSERT(exp)			((void)( (exp) != 0 || (tilde::assert_exp((const char *)#exp, __FILE__, __LINE__), 0) ))
 #define TILDE_ASSERT_MSG(exp, ...)	((void)( (exp) != 0 || (tilde::assert_msg(__FILE__, __LINE__, __VA_ARGS__), 0) ))

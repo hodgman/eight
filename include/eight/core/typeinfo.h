@@ -51,8 +51,8 @@ struct TypeName
 		static const char* value = 0;
 		if( !value )
 		{
-			static char buffer[128];
-			Get(buffer, 128);
+			static char buffer[256];
+			Get(buffer, 256);
 			//todo - memory fence
 			value = buffer;
 		}

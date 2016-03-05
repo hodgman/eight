@@ -199,7 +199,7 @@ namespace tilde
 			bool operator() (const IgnoredErrorKey & lhs, const IgnoredErrorKey & rhs) const
 			{
 #if defined(_MSC_VER)
-				int diff = stricmp(lhs.m_fileName, rhs.m_fileName);
+				int diff = _stricmp(lhs.m_fileName, rhs.m_fileName);
 #else
 				int diff = strcasecmp(lhs.m_fileName, rhs.m_fileName);
 #endif // _MSC_VER

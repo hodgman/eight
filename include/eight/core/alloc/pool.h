@@ -14,8 +14,9 @@ class PoolBase : NonCopyable
 public:
 	PoolBase( Scope& a, uint size );
 	void Clear() { eiASSERT( false && "todo" ); }
-	void Dbg_ValidateIndex(uint i);
-	int Alloc();
+	void Dbg_ValidateIndex(uint i) const;
+	bool IsIndexValid(uint i) const;
+	int Alloc();//ret -1 on fail
 	void Release( int index );
 	bool Empty() const;
 	int Begin();
@@ -34,20 +35,22 @@ private:
 
 //------------------------------------------------------------------------------
 
-template<class T, bool Enumerable>
+template<class T, bool Enumerable, bool POD=false>
 class Pool : NonCopyable
 {
-	const static bool s_NonPod = true;
 	eiDEBUG( const static bool dbgNoMemcmp = true );
 public:
 	Pool( Scope& a, uint size );
-	T& operator[](uint i);
+	      T& operator[](uint i);
+	const T& operator[](uint i) const;
 	uint Index(const T& object);
 	T*   Alloc(const T& data);
 	T*   Alloc();
 	void Release( T* object );
 	T*   Begin();
 	T*   Next(const T& object);
+	uint Capactiy() const { return m_pool.m_size; }
+	bool IsIndexValid(u32 i) const { return m_pool.IsIndexValid(i); }
 private:
 	PoolBase<Enumerable> m_pool;
 	T* m_data;

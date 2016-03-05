@@ -1,10 +1,10 @@
 
 inline bool HashTableBase::WaitForValid::operator()() const
 {
-	if( offsNextMinusOne.free == (s16)0xFFFF )//is in bucket chain, not free list
+	if( offsNextMinusOne.b.free == (s16)(u16)0xFFFF )//is in bucket chain, not free list
 		return true;
 	Next t; t.value = ((Atomic&)offsNextMinusOne.value);
-	if( t.free == (s16)0xFFFF )
+	if( t.b.free == (s16)(u16)0xFFFF )
 		return true;
 	return false;
 }
@@ -36,11 +36,12 @@ THashTableBase<K,V,T>::THashTableBase( Scope& a, uint capacity )
 template<class K, class V, bool T>
 void THashTableBase<K,V,T>::Init(uint capacity)
 {
-	eiASSERT( numBuckets );
+	eiASSERT( numBuckets != 0 );
 	memset(bucketHeads, 0, sizeof(u32)*numBuckets);
 	memset(keyList,     0, sizeof(Node)*capacity);
+	memset(valueList,   0, sizeof(V)*capacity);
 	Next terminal = { {-1, 0} };//terminate the linked list
-	keyList[numBuckets-1].offsNextMinusOne = terminal;
+	keyList[capacity-1].offsNextMinusOne = terminal;
 }
 
 template<class K, class V, bool T>
@@ -52,12 +53,12 @@ int THashTableBase<K,V,T>::FindKeyInBucketChain( const K& k, int startNode )
 	{
 		eiASSERT( index < (int)capacity );
 		node = &keyList[index];
-		eiASSERT( node->offsNextMinusOne.free == (s16)0xFFFF );
+		eiASSERT( node->offsNextMinusOne.b.free == (s16)(u16)0xFFFF );
 		if( T )
 			YieldThreadUntil( WaitForValid(node->offsNextMinusOne) );
 		if( node->key == k )
 			return index;
-		next = index+node->offsNextMinusOne.chain+1;
+		next = index+node->offsNextMinusOne.b.chain+1;
 		if( next == index )
 			break;
 	}
@@ -93,7 +94,7 @@ bool THashTableBase<K,V,T>::Insert( const K& k, int& index )
 	const u32 mskLock = 0x80000000;
 	u32 prevBucketHead;// = ~mskLock & bucketHeads[bucket];
 	
-	BusyWait spinner;
+	BusyWait<false> spinner;
 	do//lock a bucket
 	{
 		prevBucketHead = ~mskLock & bucketHeads[bucket];
@@ -115,21 +116,30 @@ bool THashTableBase<K,V,T>::Insert( const K& k, int& index )
 	s32 allocation;//allocate a node from the freelist
 	{
 		Next offsNextMinusOne;
+		s32 newFreeHead;
 		do
 		{
 			allocation = freeHead;
+			eiASSERT( allocation < (int)capacity );
 			if( allocation == -1 )
 			{
-				eiWarn( "Hash table filled up" );
-				eiASSERT( false );
+				eiError( "Hash table filled up!!!" );
 				index = -1;
+				eiASSERT( bucketHeads[bucket] == (prevBucketHead|mskLock) );
+				*(Atomic*)(&bucketHeads[bucket]) = prevBucketHead;//unlock the bucket
 				return false;
 			}
 			offsNextMinusOne = keyList[allocation].offsNextMinusOne;
+			if( offsNextMinusOne.b.free == -1 )
+				newFreeHead = -1;
+			else
+				newFreeHead = allocation+offsNextMinusOne.b.free+1;
 	//	} while( !((Atomic&)freeHead).SetIfEqual(allocation+offsNextMinusOne.free+1, allocation) );
-		} while( !spinner.Try(SetIfEqual(&freeHead, allocation+offsNextMinusOne.free+1, allocation)) );
-		eiASSERT( !offsNextMinusOne.chain );
+		} while( !spinner.Try(SetIfEqual(&freeHead, newFreeHead, allocation)) );
+		eiASSERT( !offsNextMinusOne.b.chain );
 	}
+
+	eiASSERT(allocation < (s32)capacity);
 
 	keyList[allocation].key = k;
 	//valueList[allocation]     = v;

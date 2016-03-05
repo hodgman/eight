@@ -9,6 +9,7 @@
 #include <eight/core/message.h>
 #include <eight/core/thread/taskloop.h>
 #include <eight/core/thread/pool.h>
+#include <eight/core/traits.h>
 namespace eight {
 
 //------------------------------------------------------------------------------
@@ -54,7 +55,7 @@ class SimLoop
 		GameLoopArgs<T>& args = *(GameLoopArgs<T>*)cfg->userArgs;
 		if( idx == 0 )
 		{
-			Scope& a = *eiNew(thread, Scope)( *args.a, "TaskLoop Main" );//ensure the 'T' is destructed before the thread pool exits
+			Scope& a = *(eiNew(thread, Scope)( *args.a, "TaskLoop Main" ));//ensure the 'T' is destructed before the thread pool exits
 			cfg->userShared  = T::Create(a, thread, *args.userArgs, loop);
 			cfg->userPrepare = &PrepareGameLoop<T>;
 			cfg->userTask    = &ExecuteGameLoop<T>;
@@ -64,18 +65,19 @@ class SimLoop
 	}
 public:
 	template<class Loop>
-	static void Start(Scope& a, typename Loop::Args* args, ConcurrentFrames::Type latency=ConcurrentFrames::TwoFrames, uint totalStackSize=eiMiB(128), uint frameScratchSize=eiMiB(1))
+	static void Start(Scope& a, typename Loop::Args* args, ConcurrentFrames::Type latency=ConcurrentFrames::TwoFrames, uint totalStackSize=eiMiB(128), uint frameScratchSize=eiMiB(1), uint numWorkers=0, uint numBackgroundWorkers=0)
 	{
 		GameLoopArgs<Loop> cargs = { &a, args };
 		TaskLoop* loop = eiNew(a, TaskLoop)( a, &cargs, &InitGameLoopThread<Loop>, totalStackSize, frameScratchSize, latency );
-		StartThreadPool( a, &TaskLoop::ThreadMain, loop );
+
+		//todo - do this without duck typing args...
+		args->blobConfig.backgroundPool = StartBackgroundThreadPool( a, &TaskLoop::BackgroundThreadMain, loop, numBackgroundWorkers );
+
+		StartThreadPool( a, &TaskLoop::ThreadMain, loop, numWorkers );//TODO
 	}
 };
 
 
-
-template<class A, class B> struct SameType      { const static bool value = false; };//TODO - move
-template<class T>          struct SameType<T,T> { const static bool value = true; };
 
 template<class Self> class GameLoopComponent : NonCopyable //TODO - see if this pans out
 {
@@ -84,6 +86,7 @@ template<class Self> class GameLoopComponent : NonCopyable //TODO - see if this 
 public:
 	void* InitThread(Scope& thread, uint idx, TaskLoop& loop, TaskLoop::Config* cfg)
 	{
+		return 0;
 	}
 	void PrepareFrame(Scope& a, Scope& frame, void* thread, const void* prevFrame)
 	{

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <stdarg.h>
+#include <eight/core/macro.h>
 
 namespace eight {
 //------------------------------------------------------------------------------
@@ -21,7 +22,7 @@ bool IsDebuggerAttached();
 
 //! Macro for compile-time assertion
 //TODO - use the template based solution that gives better error messages
-#define eiSTATIC_ASSERT(exp) typedef int assert_##_LINE_ [(exp) * 2 - 1];
+#define eiSTATIC_ASSERT(exp) typedef int eiJOIN(assert_,__LINE__)[(exp) * 2 - 1];
 
 bool Assert( const char* e, int l, const char* f, const char* fn );
 void DebugOutput( const char* prefix, const char* fmt, ... );
@@ -48,6 +49,7 @@ void Printf( const char* msg, ... );
 	#define eiASSERT( a )       eiRASSERT( a )
 	#define eiDEBUG(  a )       a
 	#define eiASSUME( a )       eiASSERT( a )
+	#define eiError(fmt, ...) do { eight::DebugOutput("ERROR: ", fmt, __VA_ARGS__); } while(0)
 	#define eiWarn(fmt, ...) do { eight::DebugOutput("WARN: ", fmt, __VA_ARGS__); } while(0)
 	#define eiInfo(name, fmt, ...) do { if(eiInfo_##name) eight::DebugOutput(#name": ", fmt, __VA_ARGS__); } while(0)
 	#define eiInfoGroup(name, enabled) const static bool eiInfo_##name = enabled
@@ -61,10 +63,15 @@ void Printf( const char* msg, ... );
 	#define eiASSERT( a ) eiNop
 	#define eiDEBUG( a )
 
+	#define eiError(...) eiNop
 	#define eiWarn(...) eiNop
 	#define eiInfo(...) eiNop
 	#define eiInfoGroup(name, enabled)
 #endif
+
+#define eiASSERTMSG(a, fmt, ...) eiASSERT(a) //todo msg
+
+#define eiASSERT_ALIGN(addr, align) eiASSERT(((intptr_t)(addr) & ((align) - 1)) == 0)
 
 //------------------------------------------------------------------------------
 } // namespace eight

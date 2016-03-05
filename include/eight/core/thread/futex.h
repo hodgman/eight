@@ -3,6 +3,7 @@
 #include <eight/core/thread/atomic.h>
 #include <eight/core/debug.h>
 #include <eight/core/noncopyable.h>
+#include <eight/core/profiler.h>
 namespace eight {
 //------------------------------------------------------------------------------
 
@@ -31,6 +32,7 @@ private:
 
 inline void Futex::Lock()
 {
+	//eiProfile("Futex::Lock");
 	struct TryLock { TryLock( Futex* self ) : self(self) {} Futex* self;
 		bool operator()()
 		{

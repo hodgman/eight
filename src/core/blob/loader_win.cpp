@@ -7,6 +7,8 @@
 #include <eight/core/throw.h>
 #include <stdio.h>
 
+//#pragma optimize("",off)//!!!!!
+
 #ifdef eiASSET_REFRESH
 namespace eight
 {
@@ -31,15 +33,16 @@ BlobLoaderDevWin32::BlobLoaderDevWin32(Scope& a, const BlobConfig& c, const Task
 	, m_manifest()
 	, m_queue( a, c.maxRequests, l.MaxConcurrentFrames() )
 	, m_loads( a, c.maxRequests )
-	, m_pendingLoads()
 	, m_baseDevPath( c.devPath )
 	, m_basePath( c.path )
 	, m_baseLength( strlen(c.path) )
+	, m_pendingLoads()
 	, m_manifestFilename( c.manifestFile )
-	, m_osUpdateTask( SingleThread::CurrentThread() )//todo - from blob config?
+	, m_osUpdateTask( c.osWorkerThread )
 	, m_manifestFile(INVALID_HANDLE_VALUE)
 	, m_manifestLoad()
 	, m_manifestSize()
+	, m_backgroundJobs(*c.backgroundPool)
 {
 	LoadManifest();
 }
@@ -67,7 +70,14 @@ void BlobLoaderDevWin32::LoadManifest()
 	eiInfo(BlobLoader, "loading %s\n", path);
 	m_manifestFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY|FILE_FLAG_SEQUENTIAL_SCAN|FILE_FLAG_OVERLAPPED, 0);
 	if(m_manifestFile == INVALID_HANDLE_VALUE)
+	{
+		DWORD error = GetLastError();
+		void* errText = 0;
+		DWORD errLength = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, 0, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&errText, 0, 0);
+		eiInfo(BlobLoader, "Error: %s\n", errText);
+		LocalFree(errText); 
 		return;
+	}
 
 	DWORD fileSize = 0, fileSizeHi = 0;
 	fileSize = GetFileSize(m_manifestFile, &fileSizeHi);
@@ -78,6 +88,7 @@ void BlobLoaderDevWin32::LoadManifest()
 		DWORD error = GetLastError();
 		void* errText = 0;
 		DWORD errLength = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, 0, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&errText, 0, 0);
+		eiInfo(BlobLoader, "Error: %s\n", errText);
 		LocalFree(errText); 
 		return;
 	}
@@ -147,13 +158,23 @@ VOID WINAPI BlobLoaderDevWin32::OnManifestComplete(DWORD errorCode, DWORD number
 
 bool BlobLoaderDevWin32::Load(const AssetName& name, const BlobLoader::Request& req)//call at any time from any thread
 {
+//	eiASSERT(name.hash != 0xe5eabaec);
 	uint frame = m_loop.Frame();
 	QueueItem item = { name, req };
 	return m_queue.Push( frame, item );
 }
 
+void BlobLoaderDevWin32::UpdateBackground()
+{
+	if( m_pendingLoads )
+	{
+		SleepEx(0, TRUE);//trigger OnComplete calls
+	}
+}
+
 void BlobLoaderDevWin32::Update(uint worker, bool inRefreshInterrupt)
 {
+	eiProfile("BlobLoaderDevWin32::Update");
 	eiBeginSectionThread(m_osUpdateTask)//should be executed by one thread only, the same OS thread each time.
 	{
 		eiASSERT( m_manifest && m_manifestFile==INVALID_HANDLE_VALUE && !m_manifestLoad );
@@ -167,6 +188,7 @@ void BlobLoaderDevWin32::Update(uint worker, bool inRefreshInterrupt)
 			QueueItem* item = 0;
 			while( m_queue.Peek(frame, item) )
 			{
+				ScopeLock<Futex> l(m_haxLock);
 				if( StartLoad(*item) )
 					m_queue.Pop(frame);
 				else
@@ -176,25 +198,24 @@ void BlobLoaderDevWin32::Update(uint worker, bool inRefreshInterrupt)
 
 		if( m_pendingLoads )
 		{
-			bool loadedSomething = ( 0 != SleepEx(0, TRUE) );//trigger OnComplete calls
-
-			if(loadedSomething && true)
-			{
-			}
+			SleepEx(0, TRUE);//trigger OnComplete calls
 		}
 		
 		eiASSERT( dbg_updating.SetIfEqual(0, 1) );
 	}
 	eiEndSection(m_osUpdateTask);
 
+	eiProfile("LoadItems.ForEach");
 	struct Lambda
 	{
-		Lambda(BlobLoaderDevWin32& self, uint worker) : self(self), worker(worker) {} BlobLoaderDevWin32& self; uint worker;
+		Lambda(BlobLoaderDevWin32& self, uint worker) : self(self), worker(worker), m_state(0) {} BlobLoaderDevWin32& self; uint worker, m_state;
 		bool operator()( LoadItem& i )
 		{
-			return self.UpdateLoad( i, worker );
+			return self.UpdateLoad( i, worker, m_state );
 		}
 	} updateLoad( *this, worker );
+	
+	ScopeLock<Futex> l(m_haxLock);
 	m_loads.ForEach( updateLoad );
 }
 
@@ -218,62 +239,83 @@ const char* BlobLoaderDevWin32::FullDevPath( char* buf, int bufSize, const char*
 
 bool BlobLoaderDevWin32::StartLoad(QueueItem& q)
 {
+	eiProfile("StartLoad");
 	LoadItem* item = m_loads.Allocate();
 	if( !item )
 		return false;//failed to allocate space in the internal buffer, leave this item in its queue
 
 	item->request = q.request;
 
-	const char* factoryName = "?";
-	eiDEBUG(factoryName = q.request.userData.dbgFactoryName);
+	OpenHandleJob* openJob = Malloc<OpenHandleJob>();
+	openJob->item = item;
+	openJob->info = m_manifest->GetInfo(q.name);
+	eiASSERT( openJob->info.fileName );
+	openJob->name = q.name;
+	openJob->factoryName = "?";
+	eiDEBUG(openJob->factoryName = q.request.userData.dbgFactoryName);//-V519
+	const char* path = FullPath( openJob->path, MAX_PATH, &openJob->info.fileName->chars, openJob->info.fileName->length );
+	if( !path )
+	{
+		eiInfo(BlobLoader, "File with invalid path %x %. Factory was %s", q.name.hash, &openJob->info.fileName->chars, openJob->factoryName);
+		Free( openJob );
+		eiASSERT( false );
+		item->numBuffers = 0;
+		item->file = 0;
+		item->pass = Pass::Parse;
+		return true;
+	}
+	JobPool::Job job = { OpenHandleJob::s_OpenHandle, openJob };
+	m_backgroundJobs.PushJob(job);
+	return true;
+}
 
-	AssetManifestDevWin32::AssetInfo info = m_manifest->GetInfo(q.name);
+
+void BlobLoaderDevWin32::OpenHandleJob::OpenHandle()
+{
+	eiProfile("OpenHandleJob");
 	if( !info.numBlobs )
 	{
 		const char* assetName = "?";
-		eiDEBUG(assetName = q.name.dbgName);
-		eiInfo(BlobLoader, "File missing from manifest %x. Factory was %s. Asset name was %s.", q.name.hash, factoryName, assetName);
+		eiDEBUG(assetName = name.dbgName);//-V519
+		eiInfo(BlobLoader, "File missing from manifest %x. Factory was %s. Asset name was %s.", name.hash, factoryName, assetName);
 		goto loadFailure;
 	}
-	char buf[MAX_PATH];
-	const char* path = FullPath( buf, MAX_PATH, &info.fileName->chars, info.fileName->length );
-	if( !path )
-	{
-		eiInfo(BlobLoader, "File with invalid path %x %. Factory was %s", q.name.hash, &info.fileName->chars, factoryName);
-		goto loadFailure;
-	}
-	
+
 	eiInfo(BlobLoader, "loading %s\n", path);
 	HANDLE file = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY|FILE_FLAG_SEQUENTIAL_SCAN|FILE_FLAG_OVERLAPPED, 0);
 	if(file == INVALID_HANDLE_VALUE)
 	{
-		eiInfo(BlobLoader, "INVALID_HANDLE_VALUE %x %s. Factory was %s", q.name.hash, &info.fileName->chars, factoryName);
+		eiInfo(BlobLoader, "INVALID_HANDLE_VALUE %x %s. Factory was %s", name.hash, &info.fileName->chars, factoryName);
 		goto loadFailure;
 	}
-
-	eiASSERT( item->pass == Pass::Measure );
+//TODO
+//asdf
+	eiASSERT( item->pass == Pass::Measure );//!!!!!!!!! WTF THIS FAILS
 	eiASSERT( item->numAllocated == 0 );
-	eiASSERT( info.numBlobs <= LoadItem::MAX_BLOBS );
+	eiASSERT( info.numBlobs <= MAX_BLOBS );
 	for( uint i=0, end=info.numBlobs; i!=end; ++i )
 		item->sizes[i] = info.blobSizes[i];
 	item->numBuffers = info.numBlobs;
 	item->file = file;
 	item->pass = Pass::Alloc;
-	return true;
 
+	return;
 loadFailure:
 	eiASSERT( false );
 	item->numBuffers = 0;
 	item->file = 0;
 	item->pass = Pass::Parse;
-	return true;
 }
-bool BlobLoaderDevWin32::UpdateLoad(LoadItem& item, uint worker)
+
+
+bool BlobLoaderDevWin32::UpdateLoad(LoadItem& item, uint worker, uint& numParsed)
 {
+	bool allowParse = numParsed < 1; //todo - better metric
 	switch( item.pass )
 	{
 	case Pass::Alloc:
 		{
+			//eiProfile("BlobLoader::Pass::Alloc");
 			uint numBuffers = item.numBuffers;
 			for( uint i=0; i!=numBuffers; ++i )
 			{
@@ -284,7 +326,7 @@ bool BlobLoaderDevWin32::UpdateLoad(LoadItem& item, uint worker)
 					{
 						if( buffer == (void*)0xFFFFFFFF )
 							buffer = 0;
-						eiDEBUG( if(buffer) memset(buffer, 0xf0f0f0f0, item.sizes[i]) );
+						eiDEBUG( if(buffer) eiMEMSET(buffer, 0x10, item.sizes[i]) );//-V575
 						eiASSERT( !item.buffers[i] );
 						item.buffers[i] = buffer;
 						uint numAllocated = (uint)++item.numAllocated;
@@ -308,75 +350,102 @@ bool BlobLoaderDevWin32::UpdateLoad(LoadItem& item, uint worker)
 		break;
 
 	case Pass::Load:
-		eiBeginSectionThread( m_osUpdateTask )
 		{
-			eiASSERT( item.numBuffers );
-
-			uint offset = 0;
-			for( uint i=0, end=item.numBuffers; i!=end; ++i )
+			eiBeginSectionThread( m_osUpdateTask )
 			{
-				OVERLAPPED o = {};
-				item.overlapped[i] = o;
-				item.overlapped[i].Offset = offset;
-				item.overlapped[i].hEvent = this;
-				offset += item.sizes[i];
-				BOOL ret = ReadFileEx(item.file, item.buffers[i], item.sizes[i], &item.overlapped[i], &BlobLoaderDevWin32::OnComplete);
-				eiASSERT( ret != ERROR_HANDLE_EOF );
-				if( !ret )
+				eiProfile("BlobLoader::Pass::Load");
+				eiASSERT( item.numBuffers );
+
+				uint offset = 0;
+				for( uint i=0, end=item.numBuffers; i!=end; ++i )
 				{
-					DWORD error = GetLastError();
-					void* errText = 0;
-					DWORD errLength = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, 0, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&errText, 0, 0);
-					eiWarn("%s, %x, %x, %x, %x", (char*)errText, item.buffers[i], item.sizes[i], &item.overlapped[i], item.overlapped[i]);
-					LocalFree(errText);
-					item.overlapped[i].hEvent = 0;
+					OVERLAPPED o = {};
+					item.overlapped[i] = o;
+					item.overlapped[i].Offset = offset;
+					item.overlapped[i].hEvent = this;
+					offset += item.sizes[i];
 				}
-				else
-				{
-					++m_pendingLoads;
-				}
+
+				LoadJob* loadJob = Malloc<LoadJob>();
+				loadJob->item = &item;
+				loadJob->pPendingLoads = &m_pendingLoads;
+				JobPool::Job job = { LoadJob::s_BeginRead, loadJob };
+				m_backgroundJobs.PushJob(job);
+
+				item.pass = Pass::Parse;
 			}
-			item.pass = Pass::Parse;
+			eiEndSection( m_osUpdateTask );
 		}
-		eiEndSection( m_osUpdateTask );
 		break;
 		
 	case Pass::Parse:
-		eiBeginSectionThread( item.request.onComplete );
 		{
-			bool done = false;
-			if( !item.numBuffers )
+			if( allowParse )
+			eiBeginSectionThread( item.request.onComplete );
 			{
-				eiASSERT( !item.file );
-				item.request.pfnComplete(0, 0, 0, item.request.userData, *(BlobLoader*)this);
-				done = true;
-			}
-			else 
-			{
-				uint buffersDone = 0;
-				for( uint i=0, end=item.numBuffers; i!=end; ++i )
+				bool done = false;
+				if( !item.numBuffers )
 				{
-					if( !item.overlapped[i].hEvent )
-						++buffersDone;
-				}
-				if( buffersDone == item.numBuffers )
-				{
-					CloseHandle( item.file );
-					item.request.pfnComplete(item.numBuffers, (u8**)item.buffers, (u32*)item.sizes, item.request.userData, *(BlobLoader*)this);
+					eiASSERT( !item.file );
+					item.request.pfnComplete(0, 0, 0, item.request.userData, *(BlobLoader*)this);
 					done = true;
 				}
+				else 
+				{
+					uint buffersDone = 0;
+					for( uint i=0, end=item.numBuffers; i!=end; ++i )
+					{
+						if( !item.overlapped[i].hEvent )
+							++buffersDone;
+					}
+					if( buffersDone == item.numBuffers )
+					{
+						{
+							eiProfile("CloseHandle");
+							CloseHandle( item.file );
+						}
+						eiASSERT(item.request.pfnComplete);
+						item.request.pfnComplete(item.numBuffers, (u8**)item.buffers, (u32*)item.sizes, item.request.userData, *(BlobLoader*)this);
+						done = true;
+					}
+				}
+				if( done )
+				{
+					++numParsed;//todo - variable cost from pfnComplete?
+					LoadItem blank = {};
+					item = blank;
+					return true;//release the item
+				}
 			}
-			if( done )
-			{
-				LoadItem blank = {};
-				item = blank;
-				return true;//release the item
-			}
+			eiEndSection( item.request.onComplete );
 		}
-		eiEndSection( item.request.onComplete );
 		break;
 	}//end switch
 	return false;//don't deallocate
+}
+
+void BlobLoaderDevWin32::LoadJob::BeginRead()
+{
+	eiProfile("LoadJob");
+	for( uint i=0, end=item->numBuffers; i!=end; ++i )
+	{
+		BOOL ret = ReadFileEx(item->file, item->buffers[i], item->sizes[i], &item->overlapped[i], &BlobLoaderDevWin32::OnComplete);
+		eiASSERT( ret != ERROR_HANDLE_EOF );
+		if( !ret )
+		{
+			DWORD error = GetLastError();
+			void* errText = 0;
+			DWORD errLength = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, 0, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&errText, 0, 0);
+			eiWarn("%s, %x, %x, %x, %x", (char*)errText, item->buffers[i], item->sizes[i], &item->overlapped[i], item->overlapped[i].hEvent);
+			LocalFree(errText);
+			item->overlapped[i].hEvent = 0;
+		}
+		else
+		{
+			++(*pPendingLoads);
+		}
+	}
+	Free(this);
 }
 
 VOID WINAPI BlobLoaderDevWin32::OnComplete(DWORD errorCode, DWORD numberOfBytesTransfered, OVERLAPPED* overlapped)
@@ -384,9 +453,14 @@ VOID WINAPI BlobLoaderDevWin32::OnComplete(DWORD errorCode, DWORD numberOfBytesT
 	BlobLoaderDevWin32* self = (BlobLoaderDevWin32*)overlapped->hEvent;
 	eiASSERT( self );
 //	eiASSERT( &self->dbg_updating && self->dbg_updating != 0 );
-	eiAssertInTaskSection( self->m_osUpdateTask );
+//	eiAssertInTaskSection( self->m_osUpdateTask );
 	overlapped->hEvent = 0;
 	--self->m_pendingLoads;
+}
+
+void HackHackLoader() //TODO - have background threads call the updatebackground function instaed
+{
+	SleepEx(0, TRUE);
 }
 
 //------------------------------------------------------------------------------
@@ -443,7 +517,7 @@ AssetManifestDevWin32::AssetInfo AssetManifestDevWin32::GetInfo(const AssetName&
 		int index = find - begin;
 		AssetInfo_& info = *Info()[index];
 		uint numBlobs = NumBlobs()[index];
-		eiASSERT( numBlobs );
+		eiASSERT( numBlobs && numBlobs < BlobLoaderDevWin32::MAX_BLOBS );
 		result.numBlobs = numBlobs;
 		result.blobSizes = info.blobSizes.Begin();
 		result.fileName = &info.FileName(result.numBlobs);
@@ -457,6 +531,7 @@ eiImplementInterface( BlobLoader, BlobLoaderDevWin32 );
 eiInterfaceConstructor( BlobLoader, (a,b,c), Scope& a, const BlobConfig& b, const TaskLoop& c );
 eiInterfaceFunction( bool, BlobLoader, Load, (a,b), const AssetName& a, const Request& b )
 eiInterfaceFunction( void, BlobLoader, Update, (a,b), uint a, bool b )
+eiInterfaceFunction( void, BlobLoader, UpdateBackground, () )
 eiInterfaceFunction( BlobLoader::States, BlobLoader, Prepare, () )
 #if !defined(eiBUILD_RETAIL)
 eiInterfaceFunction( void, BlobLoader, ImmediateDevLoad, (a,b), const char* a, const ImmediateDevRequest& b )

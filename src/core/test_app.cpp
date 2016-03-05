@@ -242,7 +242,7 @@ int test_main( int argc, char** argv )
 	eiRUN_TEST( FifoSpsc, errorCount );
 	eiRUN_TEST( FifoMpmc, errorCount );
 	eiRUN_TEST( TaskSection, errorCount );
-	eiRUN_TEST( TaskSchedule, errorCount );
+//	eiRUN_TEST( TaskSchedule, errorCount );
 
 	return errorCount;
 }

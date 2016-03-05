@@ -10,9 +10,8 @@ extern "C"
 }
 
 namespace eight {
-namespace lua {
 #if eiDEBUG_LEVEL > 1
-#	define eiCheckLuaStack(L) eight::lua::LuaStackBalanceCheck_ luaStackCheck##__LINE__(L)
+#	define eiCheckLuaStack(L) eight::LuaStackBalanceCheck_ luaStackCheck##__LINE__(L)
 	class LuaStackBalanceCheck_ : NonCopyable
 	{
 	public:
@@ -25,5 +24,5 @@ namespace lua {
 #else
 #	define eiCheckLuaStack(L) do{}while(0)
 #endif
-}}
+}
 //------------------------------------------------------------------------------

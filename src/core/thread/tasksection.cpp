@@ -12,7 +12,7 @@ Nil eight::internal::_ei_semaphore_lock;
 ThreadLocalStatic<internal::ThreadId, internal::Tag_ThreadId> eight::internal::_ei_thread_id;
 ThreadLocalStatic<TaskDistribution, internal::Tag_TaskDistribution> eight::internal::_ei_task_distribution;
 
-inline TaskDistribution EnterTaskSection_Impl( u32 workersUsed, internal::ThreadId thread)
+inline TaskDistribution EnterTaskSection_Impl( u32 workersUsed, const internal::ThreadId& thread)
 {
 	using namespace internal;
 	eiASSERT( *_ei_thread_id == thread );//global thread info system is working
@@ -31,7 +31,7 @@ inline TaskDistribution EnterTaskSection_Impl( u32 workersUsed, internal::Thread
 	return work;
 }
 
-TaskDistribution eight::internal::EnterTaskSection(const TaskSection& task, ThreadId thread, TaskSectionNoLock& lock)
+TaskDistribution eight::internal::EnterTaskSection( const TaskSection& task, const ThreadId& thread, TaskSectionNoLock& lock )
 {
 	eiASSERT( task.IsSemaphore() == false && task.IsMask() == false );
 	eiASSERT( 0 == (thread.mask & task.workersDone) );
@@ -40,7 +40,7 @@ TaskDistribution eight::internal::EnterTaskSection(const TaskSection& task, Thre
 	return work;
 }
 
-TaskDistribution eight::internal::EnterTaskSectionMultiple(const TaskSection& task, ThreadId thread, TaskSectionNoLock& lock)
+TaskDistribution eight::internal::EnterTaskSectionMultiple( const TaskSection& task, const ThreadId& thread, TaskSectionNoLock& lock )
 {
 	eiASSERT( task.IsSemaphore() == false && task.IsMask() == false );
 	TaskDistribution work = EnterTaskSection_Impl( task.WorkersUsed(), thread );
@@ -50,7 +50,7 @@ TaskDistribution eight::internal::EnterTaskSectionMultiple(const TaskSection& ta
 	return work;
 }
 
-TaskDistribution eight::internal::EnterTaskSectionMask(const ThreadMask& task, ThreadId thread, TaskSectionMaskLock& lock)
+TaskDistribution eight::internal::EnterTaskSectionMask( const ThreadMask& task, const ThreadId& thread, TaskSectionMaskLock& lock )
 {
 	u32 taskWorkers = task.WorkersUsed();
 	eiASSERT( task.IsMask() == true );
@@ -69,7 +69,7 @@ TaskDistribution eight::internal::EnterTaskSectionMask(const ThreadMask& task, T
 	return work;
 }
 
-TaskDistribution eight::internal::EnterTaskSectionSemaphore(Semaphore& task, ThreadId thread, TaskSectionLock& lock)
+TaskDistribution eight::internal::EnterTaskSectionSemaphore( Semaphore& task, const ThreadId& thread, TaskSectionLock& lock )
 {
 	eiASSERT( task.IsSemaphore() == true && task.IsMask() == false );
 	
@@ -98,17 +98,23 @@ nolock:
 	return work;
 }
 
-void eight::internal::ExitTaskSection(TaskSection& task, const TaskDistribution& work, ThreadId thread)
+void eight::internal::ExitTaskSection( TaskSection& task, const TaskDistribution& work, const ThreadId& thread )
 {
 	eiASSERT( !task.IsSemaphore() && !task.IsMask() );
 	eiASSERT( work.thisWorker >= 0 );
 	eiASSERT( work.numWorkers >  0 );
-	u32 localDone;
+	u32 localDone, newDoneValue;
 	do
 	{
 		localDone = task.workersDone;
-	} while( !task.workersDone.SetIfEqual(localDone | thread.mask, localDone) );
+		newDoneValue = localDone | thread.mask;
+	} while( !task.workersDone.SetIfEqual( newDoneValue, localDone ) );
 	//TODO - atomic add would be fine here
+
+#if defined(eiBUILD_USE_TASK_WAKE_EVENTS)
+	if( task.WorkersUsed() == newDoneValue )
+		FireWakeEvent( (eight::ThreadId&)thread );
+#endif
 }
 
 void eight::internal::ExitTaskSectionMask()
@@ -116,20 +122,26 @@ void eight::internal::ExitTaskSectionMask()
 	WriteBarrier();
 }
 
-void eight::internal::ExitTaskSectionSemaphore(Semaphore& task, const TaskDistribution& work, ThreadId thread)
+void eight::internal::ExitTaskSectionSemaphore( Semaphore& task, const TaskDistribution& work, const ThreadId& thread )
 {
 	eiInfo(TaskSection, "%d - Exit - EnterTaskSectionSemaphore\n", internal::_ei_thread_id->index );
 	eiASSERT( task.IsSemaphore() && !task.IsMask() );
 	eiASSERT( work.thisWorker >= 0 );
 	eiASSERT( work.numWorkers >  0 );
 	s32 value = task.workersDone;
+	s32 newValue = value & ~0x20000000;
 	eiASSERT( (value & 0x20000000) );
 	if( false eiDEBUG(||true) )
 	{
-		eiASSERT( task.workersDone.SetIfEqual( value & ~0x20000000, value ) );
+		eiASSERT( task.workersDone.SetIfEqual( newValue, value ) );
 	}
 	else
-		task.workersDone = value & ~0x20000000;
+		task.workersDone = newValue;
+
+#if defined(eiBUILD_USE_TASK_WAKE_EVENTS)
+	if( task.WorkersUsed() == newValue )
+		FireWakeEvent( (eight::ThreadId&)thread );
+#endif
 }
 
 

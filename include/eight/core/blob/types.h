@@ -80,9 +80,31 @@ template<class T> struct List
 	const T& operator[](uint i) const { eiASSERT(i < count); return Begin()[i]; }
 		  T& operator[](uint i)       { eiASSERT(i < count); return Begin()[i]; }
 	uint DataSize() const { return sizeof(T) * count; }
-	uint Bytes() const { return sizeof(List) + DataSize(); }
+	uint Bytes()    const { return sizeof(List) + DataSize(); }
 //private:
 	u32 count;
+};
+
+template<class T> struct ListOffset
+{
+	const T* Begin() const { return list->Begin(); }
+		  T* Begin()       { return list->Begin(); }
+	const T* End  () const { return list->End(); }
+	      T* End  ()       { return list->End(); }
+	const T& operator[](uint i) const { return (*list)[i]; }
+		  T& operator[](uint i)       { return (*list)[i]; }
+	uint DataSize() const { return list->DataSize(); }
+	uint Bytes()    const { return list->Bytes(); }
+	
+	const List<T>* Ptr() const { return list.Ptr(); }
+		  List<T>* Ptr()       { return list.Ptr(); }
+	const List<T>* operator->() const { return list.Ptr(); }
+		  List<T>* operator->()       { return list.Ptr(); }
+	const List<T>& operator *() const { return *list; }
+		  List<T>& operator *()       { return *list; }
+	bool operator!() const { return !list; }
+//private:
+	Offset<List<T> > list;
 };
 
 struct String { u8 length; char chars; };
@@ -93,19 +115,26 @@ struct StringOffset
 	{
 		const String& a = *this->Ptr();
 		const String& b = *other.Ptr();
-		return unlikely(&a==&b) || ( unlikely((offset&~0xFFFFU)==(other.offset&~0xFFFFU))
+		return unlikely(&a==&b) || ( unlikely((hash)==(other.hash))
 									 && likely(a.length==b.length)
 									 && likely(0==memcmp(&a.chars, &b.chars, a.length)) );
 	}
-	const String* Ptr() const { return (String*)(((u8*)&offset) + (offset&0xFFFFU)); }
-		  String* Ptr()       { return (String*)(((u8*)&offset) + (offset&0xFFFFU)); }
+	const String* Ptr() const { return (String*)(((u8*)&hash) + (offset)); }
+		  String* Ptr()       { return (String*)(((u8*)&hash) + (offset)); }
 	const String* operator->() const { return Ptr(); }
 		  String* operator->()       { return Ptr(); }
 	const String& operator *() const { return *Ptr(); }
 		  String& operator *()       { return *Ptr(); }
+	bool HashEquals( u32 hash ) const { return hash == this->hash; }
 //private:
+	u32 hash;
 	s32 offset;
 };
+
+struct CompareStringHash { inline bool operator()( const StringOffset& lhs, const StringOffset& rhs )
+{
+	return lhs.hash < rhs.hash;
+}};
 
 //------------------------------------------------------------------------------
 }
