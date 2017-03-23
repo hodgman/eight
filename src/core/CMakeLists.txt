@@ -14,6 +14,7 @@ debug.h
 throw.h
 macro.h
 align.h
+array.h
 performance.h
 application.h
 test.h
