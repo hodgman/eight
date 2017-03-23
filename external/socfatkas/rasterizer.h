@@ -158,11 +158,11 @@ struct _MM_ALIGN16 Rasterizer
 		{
 			if( is_occluder )
 			{
-				triangle_indices[ x ]->m_count = triangles[ x ] - triangle_indices[ x ]->m_triangles;
+				triangle_indices[ x ]->m_count = (int)(triangles[ x ] - triangle_indices[ x ]->m_triangles);
 				eiASSERT( triangle_indices[ x ]->m_count <= total_triangle_count && triangle_indices[ x ]->m_count >=0 );
 			}
 			if( is_occludee )
-				triangle_indices_test[ x ]->m_count = triangles_test[ x ] - triangle_indices_test[ x ]->m_triangles;
+				triangle_indices_test[ x ]->m_count = (int)(triangles_test[ x ] - triangle_indices_test[ x ]->m_triangles);
 		}
 	}
 

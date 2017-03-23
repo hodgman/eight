@@ -53,9 +53,9 @@ void Rasterizer::Init()
 	{
 		for (int i = 0; i < j*128; ++i )
 			Tile::g_x_shifts[ j ][ i ] = Vector4Int( 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff );
-		for (size_t i = (j+1)*128; i < 4096; ++i )
+		for (int i = (j+1)*128; i < 4096; ++i )
 			Tile::g_x_shifts[ j ][ i ] = VecIntZero();
-		for (size_t i = 0; i < 128; ++i ) 
+		for (int i = 0; i < 128; ++i ) 
 			Tile::g_x_shifts[ j ][ j*128 + i ] = _mm_set_epi32( Shift(i), Shift(i - 32), Shift(i - 64), Shift(i - 96) );
 	}
 	init = true;
