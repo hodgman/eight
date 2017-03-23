@@ -11,7 +11,7 @@ using namespace tilde;
 
 Tilde* Tilde::New(Scope& a, int port)
 {
-	return (Tilde*)(eiNew(a,LuaHostWindows)(port));//-V572
+	return (Tilde*)(LuaHostWindows*)(eiNew(a,LuaHostWindows)(port));//-V572
 }
 
 void Tilde::Register(lua_State* L)

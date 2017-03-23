@@ -15,7 +15,7 @@ namespace eight {
 	class LuaStackBalanceCheck_ : NonCopyable
 	{
 	public:
-		LuaStackBalanceCheck_(lua_State* L) : L(L), mark(lua_gettop(L)) {}
+		LuaStackBalanceCheck_(lua_State* L) : L(L), mark(lua_gettop(L)) { eiASSERT(L); }
 		~LuaStackBalanceCheck_() { int newMark = lua_gettop(L); eiASSERT(newMark == mark); }
 	private:
 		lua_State* L;
