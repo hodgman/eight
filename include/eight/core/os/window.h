@@ -1,6 +1,9 @@
 //------------------------------------------------------------------------------
 #pragma once
 #include <eight/core/noncopyable.h>
+#include <eight/core/types.h>
+#include <rdestl/vector.h>
+#include "../thread/fifo_spsc.h"
 namespace eight {
 //------------------------------------------------------------------------------
 
@@ -12,7 +15,7 @@ namespace MouseInput
 {
 	enum Type
 	{
-		Btn1,
+		Btn1 = 0,
 		Btn2,
 		Btn3,
 		Btn4,
@@ -131,12 +134,13 @@ struct OsWindowArgs
 class OsWindow : NonCopyable
 {
 public:
-	typedef void (FnWindowSize )(void*, int width, int height);
-	typedef void (FnMouseButton)(void*, MouseInput::Type, ButtonState::Type);
-	typedef void (FnMousePos   )(void*, int x, int y, bool relative);
-	typedef void (FnMouseWheel )(void*, int z);
-	typedef void (FnKey        )(void*, Key::Type, ButtonState::Type);
-	typedef void (FnChar       )(void*, int character, ButtonState::Type);
+	typedef void (FnWindowSize  )(void*, int width, int height);
+	typedef void (FnMouseButton )(void*, MouseInput::Type, ButtonState::Type);
+	typedef void (FnMousePos    )(void*, int x, int y, bool relative);
+	typedef void (FnMouseWheel  )(void*, int z);
+	typedef bool (FnRequestMouse)(void*);
+	typedef void (FnKey         )(void*, Key::Type, ButtonState::Type);
+	typedef void (FnChar        )(void*, int character, ButtonState::Type);
 	struct Callbacks
 	{
 		void*            userData;
@@ -144,6 +148,7 @@ public:
 		FnMouseButton*   mouseButton;
 		FnMousePos*      mousePos;
 		FnMouseWheel*    mouseWheel;
+		FnRequestMouse*  requestMouse;
 		FnKey*           key;
 		FnChar*          chars;
 	};
@@ -158,7 +163,10 @@ public:
 
 	const SingleThread& Thread() const;
 	
-	void ShowMouseCursor(bool b);
+	void ShowMouseCursor( bool b );
+	bool IsMouseCursorShown() const;
+
+	void RestoreWindow();
 
 	void Close();
 
@@ -168,42 +176,313 @@ public:
 template<class T>
 struct BindToOsWindow
 {
-	static void s_WindowSize (void* o, int width, int height)                   { ((T*)o)->WindowSize(width, height); }
-	static void s_MouseButton(void* o, MouseInput::Type b, ButtonState::Type s) { ((T*)o)->MouseButton(b, s); }
-	static void s_MousePos   (void* o, int x, int y, bool r)                    { ((T*)o)->MousePos(x, y, r); }
-	static void s_MouseWheel (void* o, int z)                                   { ((T*)o)->MouseWheel(z); }
-	static void s_Key        (void* o, Key::Type k, ButtonState::Type s)        { ((T*)o)->Key(k, s); }
-	static void s_Char       (void* o, int character, ButtonState::Type s)      { ((T*)o)->Char(character, s); }
+	static void s_WindowSize  (void* o, int width, int height)                   { ((T*)o)->WindowSize(width, height); }
+	static void s_MouseButton (void* o, MouseInput::Type b, ButtonState::Type s) { ((T*)o)->MouseButton(b, s); }
+	static void s_MousePos    (void* o, int x, int y, bool r)                    { ((T*)o)->MousePos(x, y, r); }
+	static void s_MouseWheel  (void* o, int z)                                   { ((T*)o)->MouseWheel(z); }
+	static bool s_RequestMouse(void* o)                                          { return ((T*)o)->RequestMouse(); }
+	static void s_Key         (void* o, Key::Type k, ButtonState::Type s)        { ((T*)o)->Key(k, s); }
+	static void s_Char        (void* o, int character, ButtonState::Type s)      { ((T*)o)->Char(character, s); }
 };
 template<class T>
-OsWindow::Callbacks OsWindowCallbacks(T& o)
+OsWindow::Callbacks OsWindowCallbacks(T* user=0)
 {
 	OsWindow::Callbacks c = 
 	{
-		&o,
+		user,
 		&BindToOsWindow<T>::s_WindowSize,
 		&BindToOsWindow<T>::s_MouseButton,
 		&BindToOsWindow<T>::s_MousePos,
 		&BindToOsWindow<T>::s_MouseWheel,
+		&BindToOsWindow<T>::s_RequestMouse,
 		&BindToOsWindow<T>::s_Key,
 		&BindToOsWindow<T>::s_Char
 	};
 	return c;
 }
-template<class T>
-OsWindow::Callbacks OsWindowCallbacks()
+
+class LayeredInputHandler
 {
-	OsWindow::Callbacks c = 
+public:
+	typedef bool (FnWindowSize  )(void*, int width, int height);
+	typedef bool (FnMouseButton )(void*, MouseInput::Type, ButtonState::Type);
+	typedef bool (FnMousePos    )(void*, int x, int y, bool relative);
+	typedef bool (FnMouseWheel  )(void*, int z);
+	typedef bool (FnRequestMouse)(void*);
+	typedef bool (FnKey         )(void*, Key::Type, ButtonState::Type);
+	typedef bool (FnChar        )(void*, int character, ButtonState::Type);
+	struct Callbacks
 	{
-		0,
-		&BindToOsWindow<T>::s_WindowSize,
-		&BindToOsWindow<T>::s_MouseButton,
-		&BindToOsWindow<T>::s_MousePos,
-		&BindToOsWindow<T>::s_MouseWheel,
-		&BindToOsWindow<T>::s_Key,
-		&BindToOsWindow<T>::s_Char
+		bool             active;
+		void*            userData;
+		FnWindowSize*    windowSize;
+		FnMouseButton*   mouseButton;
+		FnMousePos*      mousePos;
+		FnMouseWheel*    mouseWheel;
+		FnRequestMouse*  requestMouse;
+		FnKey*           key;
+		FnChar*          chars;
+	};
+
+	OsWindow::Callbacks Bind();
+
+	void SetActive( void* key_userData, bool value );
+	void PushBack( const Callbacks& c ) { m_layers.push_back( c ); }
+	void PopBack() { m_layers.pop_back(); }
+
+private:
+	friend struct BindToOsWindow<LayeredInputHandler>;
+	void WindowSize( int w, int h );
+	void MouseButton( MouseInput::Type b, ButtonState::Type s );
+	void MousePos( int x, int y, bool relative );
+	void MouseWheel( int z );
+	bool RequestMouse();
+	void Key( Key::Type k, ButtonState::Type s );
+	void Char( int character, ButtonState::Type s );
+
+	rde::vector<Callbacks> m_layers;
+};
+
+template<class T>
+struct BindToLayeredInputHandler
+{
+	static bool s_WindowSize  (void* o, int width, int height)                   { return ((T*)o)->WindowSize(width, height); }
+	static bool s_MouseButton (void* o, MouseInput::Type b, ButtonState::Type s) { return ((T*)o)->MouseButton(b, s); }
+	static bool s_MousePos    (void* o, int x, int y, bool r)                    { return ((T*)o)->MousePos(x, y, r); }
+	static bool s_MouseWheel  (void* o, int z)                                   { return ((T*)o)->MouseWheel(z); }
+	static bool s_RequestMouse(void* o)                                          { return ((T*)o)->RequestMouse(); }
+	static bool s_Key         (void* o, Key::Type k, ButtonState::Type s)        { return ((T*)o)->Key(k, s); }
+	static bool s_Char        (void* o, int character, ButtonState::Type s)      { return ((T*)o)->Char(character, s); }
+};
+template<class T>
+LayeredInputHandler::Callbacks LayeredInputHandlerCallbacks( T* user=0, bool active=true )
+{
+	LayeredInputHandler::Callbacks c =
+	{
+		active,
+		user,
+		&BindToLayeredInputHandler<T>::s_WindowSize,
+		&BindToLayeredInputHandler<T>::s_MouseButton,
+		&BindToLayeredInputHandler<T>::s_MousePos,
+		&BindToLayeredInputHandler<T>::s_MouseWheel,
+		&BindToLayeredInputHandler<T>::s_RequestMouse,
+		&BindToLayeredInputHandler<T>::s_Key,
+		&BindToLayeredInputHandler<T>::s_Char
 	};
 	return c;
+}
+
+
+//todo move
+inline void LayeredInputHandler::SetActive( void* key_userData, bool value )
+{
+	for( uint i=0, end=m_layers.size(); i!=end; ++i )
+	{
+		Callbacks& c = m_layers[i];
+		if( c.userData == key_userData )
+		{
+			c.active = value;
+			break;
+		}
+	}
+}
+inline void LayeredInputHandler::WindowSize( int w, int h )
+{
+	for( uint i=0, end=m_layers.size(); i!=end; ++i )
+	{
+		Callbacks& c = m_layers[i];
+		if( !c.active )
+			continue;
+		if( c.windowSize && c.windowSize(c.userData, w, h) )
+			break;
+	}
+}
+inline void LayeredInputHandler::MouseButton( MouseInput::Type b, ButtonState::Type s )
+{
+	for( uint i=0, end=m_layers.size(); i!=end; ++i )
+	{
+		Callbacks& c = m_layers[i];
+		if( !c.active )
+			continue;
+		if( c.mouseButton && c.mouseButton( c.userData, b, s ) )
+			break;
+	}
+}
+inline void LayeredInputHandler::MousePos( int x, int y, bool relative )
+{
+	for( uint i=0, end=m_layers.size(); i!=end; ++i )
+	{
+		Callbacks& c = m_layers[i];
+		if( !c.active )
+			continue;
+		if( c.mousePos && c.mousePos( c.userData, x, y, relative ) )
+			break;
+	}
+}
+inline void LayeredInputHandler::MouseWheel( int z )
+{
+	for( uint i=0, end=m_layers.size(); i!=end; ++i )
+	{
+		Callbacks& c = m_layers[i];
+		if( !c.active )
+			continue;
+		if( c.mouseWheel && c.mouseWheel( c.userData, z) )
+			break;
+	}
+}
+inline bool LayeredInputHandler::RequestMouse()
+{
+	for( uint i=0, end=m_layers.size(); i!=end; ++i )
+	{
+		Callbacks& c = m_layers[i];
+		if( !c.active )
+			continue;
+		if( c.requestMouse && c.requestMouse( c.userData ) )
+			return true;
+	}
+	return false;
+}
+inline void LayeredInputHandler::Key( Key::Type k, ButtonState::Type s )
+{
+	for( uint i=0, end=m_layers.size(); i!=end; ++i )
+	{
+		Callbacks& c = m_layers[i];
+		if( !c.active )
+			continue;
+		if( c.key && c.key( c.userData, k, s ) )
+			break;
+	}
+}
+inline void LayeredInputHandler::Char( int character, ButtonState::Type s )
+{
+	for( uint i=0, end=m_layers.size(); i!=end; ++i )
+	{
+		Callbacks& c = m_layers[i];
+		if( !c.active )
+			continue;
+		if( c.chars && c.chars( c.userData, character, s ) )
+			break;
+	}
+}
+
+
+
+class OsWindowMessageBuffer
+{
+public:
+	OsWindowMessageBuffer(Scope& a, uint maxMessages) : m_messages(a, maxMessages), m_capacity(maxMessages), m_hack() {}
+	uint MaxMessages() const { return m_capacity; }
+
+	//Producer thread only:
+	OsWindow::Callbacks Bind();
+	void PostQuitMessage();
+
+	//Consumer thread only:
+	bool PopTo(OsWindow::Callbacks); // returns true if a quit message has been posted
+private:
+	friend struct BindToOsWindow<OsWindowMessageBuffer>;
+	void WindowSize( int w, int h );
+	void MouseButton( MouseInput::Type b, ButtonState::Type s );
+	void MousePos( int x, int y, bool relative );
+	void MouseWheel( int z );
+	void Key( Key::Type k, ButtonState::Type s );
+	void Char( int character, ButtonState::Type s );
+	bool RequestMouse();
+
+	struct Message
+	{
+		enum Type
+		{
+			WindowSize,
+			MouseButton,
+			MousePos,
+			MouseWheel,
+			Key,
+			Char,
+		} type;
+		int a,b,c;
+	};
+	FifoSpsc<Message> m_messages;
+	Atomic m_quit;
+	uint m_capacity;
+	Atomic m_hack;
+};
+
+//todo move
+inline void OsWindowMessageBuffer::PostQuitMessage()
+{
+	m_quit = true;
+}
+inline bool OsWindowMessageBuffer::PopTo(OsWindow::Callbacks who)
+{
+	Message m;
+	while( m_messages.Pop(m) )
+	{
+		switch(m.type)
+		{
+		case Message::WindowSize:
+			if( who.windowSize )
+				who.windowSize(who.userData, m.a, m.b);
+			break;
+		case Message::MouseButton:
+			if( who.mouseButton )
+				who.mouseButton(who.userData, (MouseInput::Type)m.a, (ButtonState::Type)m.b);
+			break;
+		case Message::MousePos:
+			if( who.mousePos )
+				who.mousePos(who.userData, m.a, m.b, !!m.c);
+			break;
+		case Message::MouseWheel:
+			if( who.mouseWheel )
+				who.mouseWheel(who.userData, m.a);
+			break;
+		case Message::Key:
+			if( who.key )
+				who.key(who.userData, (Key::Type)m.a, (ButtonState::Type)m.b);
+			break;
+		case Message::Char:
+			if( who.chars )
+				who.chars(who.userData, m.a, (ButtonState::Type)m.b);
+			break;
+		}
+	}
+	if( who.requestMouse )
+		m_hack = who.requestMouse(who.userData) ? 1 : 0;
+	return m_quit != 0;
+}
+inline void OsWindowMessageBuffer::WindowSize( int w, int h )
+{
+	Message m = { Message::WindowSize, w, h };
+	m_messages.Push(m);
+}
+inline void OsWindowMessageBuffer::MouseButton( MouseInput::Type b, ButtonState::Type s )
+{
+	Message m = { Message::MouseButton, b, s };
+	m_messages.Push(m);
+}
+inline void OsWindowMessageBuffer::MousePos( int x, int y, bool relative )
+{
+	Message m = { Message::MousePos, x, y, relative?1:0 };
+	m_messages.Push(m);
+}
+inline void OsWindowMessageBuffer::MouseWheel( int z )
+{
+	Message m = { Message::MouseWheel, z };
+	m_messages.Push(m);
+}
+inline bool OsWindowMessageBuffer::RequestMouse()
+{
+	return !!m_hack;
+}
+inline void OsWindowMessageBuffer::Key( Key::Type k, ButtonState::Type s )
+{
+	Message m = { Message::Key, k, s };
+	m_messages.Push(m);
+}
+inline void OsWindowMessageBuffer::Char( int character, ButtonState::Type s )
+{
+	Message m = { Message::Char, character, s };
+	m_messages.Push(m);
 }
 
 //------------------------------------------------------------------------------

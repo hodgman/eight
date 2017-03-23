@@ -337,7 +337,7 @@ public:
 	void InputChar( int character, int action );
 	void InputMouseClick( int button, int action );
 	bool OpenWindow( int width, int height, int mode, const char* title, const Callbacks& );
-	bool IsWindowOpen() { return _glfwWin.Opened; }
+	bool IsWindowOpen() const { return _glfwWin.Opened; }
 	void CloseWindow();
 	void SetWindowTitle( const char *title );
 	void GetWindowSize( int *width, int *height );
@@ -351,6 +351,7 @@ public:
 	bool PollEvents(uint maxMessages, const Timer* t, float maxTime);
 	//void WaitEvents();
 	void ShowMouseCursor( bool );
+	bool IsMouseCursorShown() const;
 
 	void DestroyWindow();
 	int  TranslateKey( DWORD wParam, DWORD lParam );
@@ -365,6 +366,8 @@ public:
 	GlfwTimer _glfwTimer;
 	GlfwInput _glfwInput;
 	_GLFWwin _glfwWin;
+
+	FnRequestMouse* m_requestMouse;
 
 	bool quitRequest;
 };
@@ -391,6 +394,7 @@ OsWindow* OsWindow::New( Scope& a, const SingleThread& thread, const OsWindowArg
 {
 	eiASSERT( thread.IsCurrent() );
 	OsWindowWin32* win = eiNew( a, OsWindowWin32 )( thread );
+	win->m_requestMouse = c.requestMouse;
 	bool ok = win->OpenWindow( args.width, args.height, args.mode, args.title, c );
 	eiASSERT( ok );
 	return win;
@@ -414,6 +418,15 @@ void OsWindow::SetCallbackUser( void* user )
 bool OsWindow::PollEvents(uint maxMessages, const Timer* t, float maxTime)
 {
 	eiProfile("OsWindow::PollEvents");
+	if( Downcast( this ).m_requestMouse )
+	{
+		bool requesting = Downcast(this).m_requestMouse(Downcast(this)._glfwWin.UserData);
+		if( Downcast(this)._glfwWin.MouseLock != !requesting )
+		{
+			Downcast(this)._glfwWin.OldMouseLockValid = false;
+			ShowMouseCursor( requesting );
+		}
+	}
 	return Downcast(this).PollEvents(maxMessages, t, maxTime) | Downcast(this).quitRequest;
 }
 const SingleThread& OsWindow::Thread() const
@@ -423,6 +436,14 @@ const SingleThread& OsWindow::Thread() const
 void OsWindow::ShowMouseCursor(bool b)
 {
 	Downcast(this).ShowMouseCursor(b);
+}
+bool OsWindow::IsMouseCursorShown() const
+{
+	return Downcast( this ).IsMouseCursorShown();
+}
+void OsWindow::RestoreWindow()
+{
+	Downcast( this ).RestoreWindow();
 }
 void OsWindow::Close()
 {
@@ -632,7 +653,7 @@ static int _glfwMinMaxAnimations( int enable )
 // for making life so much easier)!
 //========================================================================
 
-static void _glfwSetForegroundWindow( HWND hWnd )
+void _glfwSetForegroundWindow( HWND hWnd )
 {
     int try_count = 0;
     int old_animate;
@@ -777,12 +798,12 @@ bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* tit
     _glfwWin.Instance = GetModuleHandle( NULL );
 
     // Set window class parameters
-    WNDCLASS    wc;
+	WNDCLASS    wc = {};
     wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     wc.lpfnWndProc   = (WNDPROC)s_WindowCallback;
     wc.cbClsExtra    = 0;
-	eiSTATIC_ASSERT(sizeof(void*)<=sizeof(int));
 	                 g_window = this;
+	//eiSTATIC_ASSERT(sizeof(void*)<=sizeof(int));
 	wc.cbWndExtra    = 0;//(int)this;
     wc.hInstance     = _glfwWin.Instance;
     wc.hIcon         = LoadIcon( NULL, IDI_WINLOGO );
@@ -790,6 +811,7 @@ bool OsWindowWin32::OpenWindow( int width, int height, int mode, const char* tit
     wc.hbrBackground = NULL;
     wc.lpszMenuName  = NULL;
     wc.lpszClassName = "GLFW";
+	wc.hbrBackground = CreateSolidBrush( RGB( 0, 0, 0 ) );//todo
 
     // Register the window class
     if( !RegisterClass( &wc ) )
@@ -1306,6 +1328,12 @@ void OsWindowWin32::WaitEvents()
 }*/
 
 
+bool OsWindowWin32::IsMouseCursorShown() const
+{
+	eiASSERT( IsWindowOpen() );
+	return !_glfwWin.MouseLock;
+}
+
 void OsWindowWin32::ShowMouseCursor( bool enable )
 {
 	eiASSERT( IsWindowOpen() );
@@ -1454,11 +1482,11 @@ LRESULT OsWindowWin32::WindowCallback( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
             // Translate and report key press
-            InputKey( TranslateKey( wParam, lParam ), ButtonState::Press );
+            InputKey( TranslateKey( (DWORD)wParam, (DWORD)lParam ), ButtonState::Press );
 
             // Translate and report character input
             if( _glfwWin.CharCallback )
-                TranslateChar( wParam, lParam, ButtonState::Press );
+                TranslateChar( (DWORD)wParam, (DWORD)lParam, ButtonState::Press );
             return 0;
 
         // Is a key being released?
@@ -1471,11 +1499,11 @@ LRESULT OsWindowWin32::WindowCallback( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
                 InputKey( Key::RShift, ButtonState::Release );
             }
             else // Translate and report key release
-                InputKey( TranslateKey( wParam, lParam ), ButtonState::Release );
+                InputKey( TranslateKey( (DWORD)wParam, (DWORD)lParam ), ButtonState::Release );
 
             // Translate and report character input
             if( _glfwWin.CharCallback )
-                TranslateChar( wParam, lParam, ButtonState::Release );
+                TranslateChar( (DWORD)wParam, (DWORD)lParam, ButtonState::Release );
             return 0;
 
         // Were any of the mouse-buttons pressed?
@@ -1736,11 +1764,11 @@ int OsWindowWin32::TranslateKey( DWORD wParam, DWORD lParam )
             // Make sure that the character is uppercase
             if( _glfwSys.HasUnicode )
             {
-                wParam = (DWORD) CharUpperW( (LPWSTR) wParam );
+                wParam = (DWORD)(ptrdiff_t)CharUpperW( (LPWSTR)(ptrdiff_t)wParam );//crazy cast - function takes A null-terminated string, or a single character
             }
             else
             {
-                wParam = (DWORD) CharUpperA( (LPSTR) wParam );
+                wParam = (DWORD)(ptrdiff_t)CharUpperA( (LPSTR)(ptrdiff_t)wParam );//crazy cast - function takes A null-terminated string, or a single character
             }
 
             // Valid ISO-8859-1 character?
