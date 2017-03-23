@@ -18,7 +18,7 @@ class AssetRoot : Interface<AssetRoot>
 public:
 	AssetRoot(Scope&, BlobLoader&, uint maxScopes=16);
 
-	void HandleRefreshInterrupt(Scope& a, AssetName* files, uint count, uint worker, uint numWorkers, AtomicPtr<void>& state);
+	void HandleRefreshInterrupt(Scope& a, AssetName* files, uint count, const ThreadId&, AtomicPtr<void>& state);
 private:
 	~AssetRoot();
 	friend class AssetScope;
@@ -51,11 +51,11 @@ class AssetScope : NonCopyable
 	typedef void  (*PfnRelease) (void*, Handle);
 	typedef void  (*PfnRefresh) (void*, Handle, uint numBlobs, u8* blobData[], u32 blobSize[], BlobLoadContext&, BlobLoader&);
 public:
-	AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMask& users, uint maxAssets, uint maxFactories, AssetRoot& parent );
-	AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMask& users, uint maxAssets, uint maxFactories, AssetScope& parent );
+	AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMask& users, uint maxAssets, uint maxFactories, AssetRoot& parent, const char* dbgName );
+	AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMask& users, uint maxAssets, uint maxFactories, AssetScope& parent, const char* dbgName );
 	~AssetScope();
 
-	void Release(uint worker);//must be called by all users prior to destruction
+	void Release(const ThreadId&);//must be called by all users prior to destruction
 
 	void Close();//don't call more than once
 	enum State
@@ -64,7 +64,7 @@ public:
 		Resolving,
 		Loaded,
 	};
-	State Update(uint worker);
+	State Update(const ThreadId&);
 
 	struct FactoryInfo
 	{
@@ -164,6 +164,7 @@ private:
 	AtomicPtr<AssetsLoadedCallback> m_onLoaded;
 	const static s32 s_loadingLock = 0x80000000;
 	eiDEBUG( Atomic m_dbgReleased );
+	eiDEBUG( const char* m_dbgName );
 };
 
 //------------------------------------------------------------------------------

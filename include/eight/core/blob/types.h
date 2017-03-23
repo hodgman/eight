@@ -22,6 +22,8 @@ struct BlobRoot : public VariableSize
 
 template<class T, class Y=s32> struct Offset
 {
+	const T* NullablePtr() const { return offset ? Ptr() : 0; }
+		  T* NullablePtr()       { return offset ? Ptr() : 0; }
 	const T* Ptr() const { return (T*)(((u8*)&offset) + offset); }
 		  T* Ptr()       { return (T*)(((u8*)&offset) + offset); }
 	const T* operator->() const { return Ptr(); }
@@ -30,7 +32,7 @@ template<class T, class Y=s32> struct Offset
 		  T& operator *()       { return *Ptr(); }
 	static uint DataSize() { return sizeof(T); }
 	bool operator!() const { return !offset; }
-	Offset& operator=( void* ptr ) { offset = ptr ? ((u8*)ptr - (u8*)&offset) : 0; return *this; }
+	Offset& operator=( void* ptr ) { offset = ptr ? (Y)((u8*)ptr - (u8*)&offset) : 0; return *this; }
 //private:
 	Y offset;
 };
@@ -44,7 +46,7 @@ template<class T> struct ArrayOffset
 	const T& operator[](uint i) const { return Ptr()[i]; }
 		  T& operator[](uint i)       { return Ptr()[i]; }
 	uint DataSize(uint count) const { return sizeof(T) * count; }
-	ArrayOffset& operator=(T* p) { offset = ((u8*)p)-((u8*)this); return *this; }
+	ArrayOffset& operator=(T* p) { offset = (s32)( ((u8*)p)-((u8*)this) ); return *this; }
 //private:
 	s32 offset;
 };
@@ -81,6 +83,8 @@ template<class T> struct List
 		  T& operator[](uint i)       { eiASSERT(i < count); return Begin()[i]; }
 	uint DataSize() const { return sizeof(T) * count; }
 	uint Bytes()    const { return sizeof(List) + DataSize(); }
+	static uint DataSize(uint count) { return sizeof(T) * count; }
+	static uint Bytes(uint count)    { return sizeof(List) + DataSize(count); }
 //private:
 	u32 count;
 };

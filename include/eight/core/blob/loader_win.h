@@ -198,19 +198,31 @@ public:
 	struct AssetInfo
 	{
 		uint numBlobs;
-		u32* blobSizes;
-		String* fileName;
+		const u32* blobSizes;
+		const String* fileName;
+		const String* layer;
 	};
-	AssetInfo GetInfo(const AssetName&);
+	AssetInfo GetInfo(const AssetName&, u64 activeLayers) const;
+	u64 GetLayerMask( uint numLayers, const u32* layerNames ) const;
 private:
 	struct AssetInfo_
 	{
 		Array<u32> blobSizes;
-		String& FileName(u8 numBlobs) { return *(String*)(blobSizes.End(numBlobs)); }
+		const String& FileName(u8 numBlobs) const { return *(String*)(blobSizes.End(numBlobs)); }
 	};
-	List<u32>                 names;
-	Array<u8>&                NumBlobs() { return *(Array<u8>*)names.End(); };
-	Array<Offset<AssetInfo_>>& Info() { return *(Array<Offset<AssetInfo_>>*)NumBlobs().End(names.count); };
+	struct LayerAssets
+	{
+		AssetInfo GetInfo(const AssetName&) const;
+		List<u32>                  names;
+		const Array<u8>&           NumBlobs() const { return *(Array<u8>*)names.End(); };
+		const Array<Offset<AssetInfo_>>& Info() const { return *(Array<Offset<AssetInfo_>>*)NumBlobs().End(names.count); };
+	};
+	struct Layer
+	{
+		Offset<LayerAssets> assets;
+		StringOffset name;
+	};
+	List<Layer> layers;
 };
 
 class BlobLoaderDevWin32 : public NonCopyable
@@ -221,7 +233,7 @@ public:
 
 	BlobLoader::States Prepare();
 	bool Load(const AssetName& name, const BlobLoader::Request& req);//call at any time from any thread
-	void Update(uint worker, bool);//should be called by all threads in the main pool
+	void Update(const ThreadId&, bool);//should be called by all threads in the main pool
 	void UpdateBackground();//should be called by all threads in the background pool
 	void ImmediateDevLoad(const char* path, const BlobLoader::ImmediateDevRequest&);
 
@@ -253,7 +265,7 @@ private:
 		BlobLoader::Request request;
 	};
 
-	const char* FullPath( char* buf, int bufSize, const char* name, int nameLen );
+	const char* FullPath( char* buf, int bufSize, const char* name, int nameLen, const char* layer, int layerLen );
 	const char* FullDevPath( char* buf, int bufSize, const char* name, int nameLen );
 	bool StartLoad(QueueItem& name);
 	bool UpdateLoad(LoadItem& item, uint worker, uint& state);
@@ -262,6 +274,7 @@ private:
 
 	const TaskLoop& m_loop;
 	AssetManifestDevWin32* m_manifest;
+	u64                    m_activeLayers;
 	LatentMpsc<QueueItem> m_queue;
 	Futex m_haxLock;
 	InactiveArray<LoadItem> m_loads;
@@ -275,6 +288,8 @@ private:
 	OVERLAPPED* m_manifestLoad;
 	uint m_manifestSize;
 	JobPool& m_backgroundJobs;
+	uint m_numLayers;
+	u32* m_layerNames;
 	eiDEBUG( Atomic dbg_updating; )
 
 	friend const SingleThread& OsThread(BlobLoader&);

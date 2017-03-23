@@ -8,7 +8,9 @@ namespace eight {
 	struct AssetStorage;
 //------------------------------------------------------------------------------
 
+#ifndef eiBUILD_RETAIL
 #define eiASSET_REFRESH //TODO always define as 0 or 1
+#endif
 
 struct Handle
 {
@@ -72,15 +74,16 @@ private:
 	friend void AssetDependency(AssetRefreshCallback&, Asset& used);
 	friend class AssetRootImpl;
 };
-       void AssetDependency(Asset& user, Asset& used);
-       void AssetDependency(AssetRefreshCallback&, Asset& used);
+void AssetDependency(Asset& user, Asset& used);
+void AssetDependency(AssetRefreshCallback&, Asset& used);
 #else
 struct AssetRefreshCallback : NonCopyable
 {
 	AssetRefreshCallback(callback, void*, TaskSection){}
 };
-inline void AssetDependency(Asset& user, Asset& used){}
-inline void AssetDependency(AssetRefreshCallback&, Asset& used){}
+//inline void AssetDependency(Asset& user, Asset& used){}
+//inline void AssetDependency(AssetRefreshCallback&, Asset& used){}
+#define AssetDependency( a, b )
 #endif
 
 

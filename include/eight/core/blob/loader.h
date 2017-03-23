@@ -15,13 +15,24 @@ struct AssetStorage;
 struct AssetName;
 class AssetScope;
 
-struct BlobConfig { const char* path; const char* devPath; uint maxRequests; const char* manifestFile; SingleThread osWorkerThread; JobPool* backgroundPool; };
+struct BlobConfig
+{
+	const char* path;
+	const char* devPath;
+	uint maxRequests;
+	const char* manifestFile;
+	uint numLayers;
+	const char*const* layers;
+	SingleThread osWorkerThread;
+	JobPool* backgroundPool;
+};
 
 struct BlobLoadContext
 {
 	AssetScope* scope;
 	AssetStorage* asset;
 	void* factory;
+	const char* assetName;
 	eiDEBUG( const char* dbgFactoryName );
 };
 
@@ -47,7 +58,7 @@ public:
 		PfnComplete     pfnComplete;
 	};
 	bool Load(const AssetName&, const Request&);//call at any time from any thread. Can fail if internal queues are full and if so should try again next frame.
-	void Update(uint worker, bool inRefreshInterrupt=false);//should be called by all threads each frame
+	void Update(const ThreadId&, bool inRefreshInterrupt=false);//should be called by all threads each frame
 	void UpdateBackground();//should be called by all threads in the background pool
 
 

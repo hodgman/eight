@@ -47,7 +47,7 @@ private:
 	{
 		((Self*)factory)->Release( h );
 	}
-	Handle Reacquire( Handle, uint numBlobs, u8* blobData[], u32 blobSize[], AssetScope&, BlobLoader&, Asset& )
+	Handle Reacquire( Handle, uint numBlobs, u8* blobData[], u32 blobSize[], AssetScope&, BlobLoader&, Asset&, const char* name )
 	{
 		eiASSERT(false);
 		return Handle((void*)0);
@@ -78,6 +78,9 @@ protected:
 		AssetStorage* asset = context.asset;
 		bool isRefresh = !!asset->Data();
 		Handle h((void*)0);
+		const char* name = context.assetName;
+		eiDEBUG( name = name ? name : context.dbgFactoryName );
+		name = name ? name : "?";
 #if !defined(eiASSET_REFRESH)
 		eiASSERT( !isRefresh );
 #else
@@ -86,18 +89,18 @@ protected:
 			const bool hasReacquireFunc = !(&Self::Reacquire == &BlobFactory<Self>::Reacquire);
 			if(hasReacquireFunc)
 			{
-				h = self->Reacquire( *asset, numBlobs, data, size, *context.scope, loader, *asset );
+				h = self->Reacquire( *asset, numBlobs, data, size, *context.scope, loader, *asset, name );
 			}
 			else
 			{
 				self->Release( *asset );
-				h = self->Acquire( numBlobs, data, size, *context.scope, loader, *asset );
+				h = self->Acquire( numBlobs, data, size, *context.scope, loader, *asset, name );
 			}
 		}
 		else
 #endif
 		{
-			h = self->Acquire( numBlobs, data, size, *context.scope, loader, *asset );
+			h = self->Acquire( numBlobs, data, size, *context.scope, loader, *asset, name );
 		}
 		asset->Assign( h );
 		eiASSERT( !h || asset->Data() );

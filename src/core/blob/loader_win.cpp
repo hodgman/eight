@@ -5,6 +5,8 @@
 #include <eight/core/sort/search.h>
 #include <eight/core/thread/taskloop.h>
 #include <eight/core/throw.h>
+#include <eight/core/traits.h>
+#include <eight/core/hash.h>
 #include <stdio.h>
 
 //#pragma optimize("",off)//!!!!!
@@ -31,11 +33,12 @@ using namespace eight;
 BlobLoaderDevWin32::BlobLoaderDevWin32(Scope& a, const BlobConfig& c, const TaskLoop& l)
 	: m_loop( l )
 	, m_manifest()
+	, m_activeLayers()
 	, m_queue( a, c.maxRequests, l.MaxConcurrentFrames() )
 	, m_loads( a, c.maxRequests )
 	, m_baseDevPath( c.devPath )
 	, m_basePath( c.path )
-	, m_baseLength( strlen(c.path) )
+	, m_baseLength( (int)strlen(c.path) )
 	, m_pendingLoads()
 	, m_manifestFilename( c.manifestFile )
 	, m_osUpdateTask( c.osWorkerThread )
@@ -43,7 +46,14 @@ BlobLoaderDevWin32::BlobLoaderDevWin32(Scope& a, const BlobConfig& c, const Task
 	, m_manifestLoad()
 	, m_manifestSize()
 	, m_backgroundJobs(*c.backgroundPool)
+	, m_numLayers(c.numLayers)
+	, m_layerNames(eiAllocArray(a, u32, c.numLayers))
 {
+	for( uint i=0; i!=m_numLayers; ++i )
+	{
+		m_layerNames[i] = Fnv32a(c.layers[i]);
+	}
+
 	LoadManifest();
 }
 
@@ -63,18 +73,18 @@ void BlobLoaderDevWin32::FreeManifest()
 void BlobLoaderDevWin32::LoadManifest()
 {
 	char buf[MAX_PATH];
-	const char* path = FullPath( buf, MAX_PATH, m_manifestFilename, strlen(m_manifestFilename) );
+	const char* path = FullPath( buf, MAX_PATH, m_manifestFilename, (int)strlen(m_manifestFilename), 0, 0 );
 	if( !path )
 		return;
 
-	eiInfo(BlobLoader, "loading %s\n", path);
+	eiInfo(BlobLoader, "loading %s", path);
 	m_manifestFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY|FILE_FLAG_SEQUENTIAL_SCAN|FILE_FLAG_OVERLAPPED, 0);
 	if(m_manifestFile == INVALID_HANDLE_VALUE)
 	{
 		DWORD error = GetLastError();
 		void* errText = 0;
 		DWORD errLength = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, 0, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&errText, 0, 0);
-		eiInfo(BlobLoader, "Error: %s\n", errText);
+		eiInfo(BlobLoader, "Error: %s", errText);
 		LocalFree(errText); 
 		return;
 	}
@@ -82,13 +92,13 @@ void BlobLoaderDevWin32::LoadManifest()
 	DWORD fileSize = 0, fileSizeHi = 0;
 	fileSize = GetFileSize(m_manifestFile, &fileSizeHi);
 	eiASSERT( fileSizeHi == 0 );
-	eiInfo(BlobLoader, "size %d\n", fileSize);
+	eiInfo(BlobLoader, "size %d", fileSize);
 	if( fileSize == INVALID_FILE_SIZE )
 	{
 		DWORD error = GetLastError();
 		void* errText = 0;
 		DWORD errLength = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, 0, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&errText, 0, 0);
-		eiInfo(BlobLoader, "Error: %s\n", errText);
+		eiInfo(BlobLoader, "Error: %s", errText);
 		LocalFree(errText); 
 		return;
 	}
@@ -128,7 +138,7 @@ BlobLoader::States BlobLoaderDevWin32::Prepare()
 			DWORD error = GetLastError();
 			void* errText = 0;
 			DWORD errLength = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, 0, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&errText, 0, 0);
-			eiWarn("%s, %x, %x, %x, %x\n", (char*)errText, m_manifest, m_manifestSize, m_manifestLoad, m_manifestLoad);
+			eiWarn("%s, %x, %x, %x, %x", (char*)errText, m_manifest, m_manifestSize, m_manifestLoad, m_manifestLoad);
 			LocalFree(errText); 
 			Free(m_manifestLoad);
 			Free(m_manifest);
@@ -146,6 +156,8 @@ BlobLoader::States BlobLoaderDevWin32::Prepare()
 		CloseHandle( m_manifestFile );
 		m_manifestLoad = 0;
 		m_manifestFile = INVALID_HANDLE_VALUE;
+
+		m_activeLayers = m_manifest->GetLayerMask(m_numLayers, m_layerNames);
 		return BlobLoader::Ready;
 	}
 	return BlobLoader::Initializing;
@@ -158,7 +170,7 @@ VOID WINAPI BlobLoaderDevWin32::OnManifestComplete(DWORD errorCode, DWORD number
 
 bool BlobLoaderDevWin32::Load(const AssetName& name, const BlobLoader::Request& req)//call at any time from any thread
 {
-//	eiASSERT(name.hash != 0xe5eabaec);
+	eiASSERT(name.hash != 0x3bb9ccab);
 	uint frame = m_loop.Frame();
 	QueueItem item = { name, req };
 	return m_queue.Push( frame, item );
@@ -172,7 +184,7 @@ void BlobLoaderDevWin32::UpdateBackground()
 	}
 }
 
-void BlobLoaderDevWin32::Update(uint worker, bool inRefreshInterrupt)
+void BlobLoaderDevWin32::Update(const ThreadId& t, bool inRefreshInterrupt)
 {
 	eiProfile("BlobLoaderDevWin32::Update");
 	eiBeginSectionThread(m_osUpdateTask)//should be executed by one thread only, the same OS thread each time.
@@ -213,24 +225,34 @@ void BlobLoaderDevWin32::Update(uint worker, bool inRefreshInterrupt)
 		{
 			return self.UpdateLoad( i, worker, m_state );
 		}
-	} updateLoad( *this, worker );
+	} updateLoad( *this, t.ThreadIndex() );
 	
 	ScopeLock<Futex> l(m_haxLock);
 	m_loads.ForEach( updateLoad );
 }
 
-const char* BlobLoaderDevWin32::FullPath( char* buf, int bufSize, const char* name, int nameLen )
+const char* BlobLoaderDevWin32::FullPath( char* buf, int bufSize, const char* name, int nameLen, const char* layer, int layerLen )
 {
-	if( m_baseLength + nameLen + 1 > bufSize ) { eiASSERT(false); return 0; }
-	buf[m_baseLength+nameLen] = '\0';
-	memcpy(buf, m_basePath, m_baseLength);
-	memcpy(buf+m_baseLength, name, nameLen);
+	int layerBytes = layerLen ? layerLen + 1 : 0;//include trailing slash on directory
+	if( m_baseLength + nameLen + layerBytes + 1 > bufSize ) { eiASSERT(false); return 0; }
+	buf[m_baseLength+nameLen+layerBytes] = '\0';
+	char* dst = buf;
+	memcpy(dst, m_basePath, m_baseLength); 
+	dst += m_baseLength;
+	if( layerLen )
+	{
+		memcpy(dst, layer, layerLen);
+		dst += layerLen;
+		*dst = '/';
+		++dst;
+	}
+	memcpy(dst, name, nameLen);
 	return buf;
 }
 const char* BlobLoaderDevWin32::FullDevPath( char* buf, int bufSize, const char* name, int nameLen )
 {
-	int baseLength = strlen(m_baseDevPath);
-	if( baseLength + nameLen + 1 > bufSize ) { eiASSERT(false); return 0; }
+	size_t baseLength = strlen(m_baseDevPath);
+	if( baseLength + nameLen + 1 > (size_t)bufSize ) { eiASSERT(false); return 0; }
 	buf[baseLength+nameLen] = '\0';
 	memcpy(buf, m_baseDevPath, baseLength);
 	memcpy(buf+baseLength, name, nameLen);
@@ -248,12 +270,15 @@ bool BlobLoaderDevWin32::StartLoad(QueueItem& q)
 
 	OpenHandleJob* openJob = Malloc<OpenHandleJob>();
 	openJob->item = item;
-	openJob->info = m_manifest->GetInfo(q.name);
-	eiASSERT( openJob->info.fileName );
+	openJob->info = m_manifest->GetInfo(q.name, m_activeLayers);
+	eiASSERTMSG( openJob->info.fileName, "Attempting to load '%s'(0x%08x) but it is not in the manifest", q.name.dbgName, q.name.hash );
+	if( !openJob->info.fileName )
+		return true;//!!!!!!!!!!!!!!!!!!!!!!!
 	openJob->name = q.name;
 	openJob->factoryName = "?";
+	q.request.userData.assetName = &openJob->info.fileName->chars;
 	eiDEBUG(openJob->factoryName = q.request.userData.dbgFactoryName);//-V519
-	const char* path = FullPath( openJob->path, MAX_PATH, &openJob->info.fileName->chars, openJob->info.fileName->length );
+	const char* path = FullPath( openJob->path, MAX_PATH, &openJob->info.fileName->chars, openJob->info.fileName->length, &openJob->info.layer->chars, openJob->info.layer->length );
 	if( !path )
 	{
 		eiInfo(BlobLoader, "File with invalid path %x %. Factory was %s", q.name.hash, &openJob->info.fileName->chars, openJob->factoryName);
@@ -281,7 +306,7 @@ void BlobLoaderDevWin32::OpenHandleJob::OpenHandle()
 		goto loadFailure;
 	}
 
-	eiInfo(BlobLoader, "loading %s\n", path);
+	eiInfo(BlobLoader, "loading %s", path);
 	HANDLE file = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY|FILE_FLAG_SEQUENTIAL_SCAN|FILE_FLAG_OVERLAPPED, 0);
 	if(file == INVALID_HANDLE_VALUE)
 	{
@@ -307,7 +332,6 @@ loadFailure:
 	item->pass = Pass::Parse;
 }
 
-
 bool BlobLoaderDevWin32::UpdateLoad(LoadItem& item, uint worker, uint& numParsed)
 {
 	bool allowParse = numParsed < 1; //todo - better metric
@@ -324,7 +348,7 @@ bool BlobLoaderDevWin32::UpdateLoad(LoadItem& item, uint worker, uint& numParsed
 					void* buffer = item.request.pfnAllocate(numBuffers, i, item.sizes[i], &item.request.userData, worker);
 					if( buffer )
 					{
-						if( buffer == (void*)0xFFFFFFFF )
+						if( buffer == eiMAGIC_POINTER(0xFF) )
 							buffer = 0;
 						eiDEBUG( if(buffer) eiMEMSET(buffer, 0x10, item.sizes[i]) );//-V575
 						eiASSERT( !item.buffers[i] );
@@ -472,17 +496,17 @@ void BlobLoaderDevWin32::ImmediateDevLoad(const char* filePath, const BlobLoader
 #else
 	u8* data = 0;
 	char buf[MAX_PATH];
-	const char* path = FullDevPath( buf, MAX_PATH, filePath, strlen(filePath) );
+	const char* path = FullDevPath( buf, MAX_PATH, filePath, (int)strlen(filePath) );
 	if( !path )
 		goto error;
-	eiInfo(BlobLoader, "loading %s\n", path);
+	eiInfo(BlobLoader, "loading %s", path);
 	HANDLE file = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY|FILE_FLAG_SEQUENTIAL_SCAN, 0);
 	if(file == INVALID_HANDLE_VALUE)
 		goto error;
 	DWORD fileSize = 0, fileSizeHi = 0;
 	fileSize = GetFileSize(file, &fileSizeHi);
 	eiASSERT( fileSizeHi == 0 );
-	eiInfo(BlobLoader, "size %d\n", fileSize);
+	eiInfo(BlobLoader, "size %d", fileSize);
 	if( fileSize == INVALID_FILE_SIZE )
 		goto getError;
 	data = (u8*)req.pfnAllocate(fileSize);
@@ -505,17 +529,61 @@ error:
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-AssetManifestDevWin32::AssetInfo AssetManifestDevWin32::GetInfo(const AssetName& name)
+u64 AssetManifestDevWin32::GetLayerMask( uint numLayers, const u32* layerNames ) const
+{
+	u64 result = 0;
+	u64 i_bit = 1;
+	for( uint i=0, end=layers.count; i!=end; ++i, i_bit<<=1 )
+	{
+		const Layer& layer = layers[i];
+		if( layer.name->length == 0 )//common layer
+			result |= i_bit;
+		else
+		{
+			for( uint j=0; j!=numLayers; ++j )
+			{
+				if( layerNames[j] == layer.name.hash )
+				{
+					result |= i_bit;
+					break;
+				}
+			}
+		}
+	}
+	return result;
+}
+AssetManifestDevWin32::AssetInfo AssetManifestDevWin32::GetInfo( const AssetName& name, u64 activeLayers ) const
+{
+	eiASSERT( layers.count < 64 );
+	while( activeLayers )
+	{
+		uint layerIdx = LeastSignificantBit(activeLayers);
+		activeLayers = ClearLeastSignificantBit(activeLayers);
+		if( layerIdx >= layers.count )
+			break;
+		const Layer& layer = layers[layerIdx];
+		const LayerAssets& assets = *layer.assets;
+		AssetManifestDevWin32::AssetInfo result = assets.GetInfo(name);
+		if( result.numBlobs )
+		{
+			result.layer = layer.name.Ptr();
+			return result;
+		}
+	}
+	AssetInfo null = {};
+	return null;
+}
+AssetManifestDevWin32::AssetInfo AssetManifestDevWin32::LayerAssets::GetInfo( const AssetName& name ) const
 {
 	AssetInfo result = {};
-	u32* const begin = names.Begin();
-	u32* const end = names.End();
-	u32* find = BinarySearch( begin, end, name.hash );
+	const u32* const begin = names.Begin();
+	const u32* const end = names.End();
+	const u32* find = BinarySearch( begin, end, name.hash );
 	eiASSERT( find >= begin && find <= end );
 	if( find != end )
 	{
-		int index = find - begin;
-		AssetInfo_& info = *Info()[index];
+		int index = (int)(find - begin);
+		const AssetInfo_& info = *Info()[index];
 		uint numBlobs = NumBlobs()[index];
 		eiASSERT( numBlobs && numBlobs < BlobLoaderDevWin32::MAX_BLOBS );
 		result.numBlobs = numBlobs;
@@ -527,10 +595,10 @@ AssetManifestDevWin32::AssetInfo AssetManifestDevWin32::GetInfo(const AssetName&
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-eiImplementInterface( BlobLoader, BlobLoaderDevWin32 );
+eiImplementInterface(BlobLoader, BlobLoaderDevWin32);
 eiInterfaceConstructor( BlobLoader, (a,b,c), Scope& a, const BlobConfig& b, const TaskLoop& c );
 eiInterfaceFunction( bool, BlobLoader, Load, (a,b), const AssetName& a, const Request& b )
-eiInterfaceFunction( void, BlobLoader, Update, (a,b), uint a, bool b )
+eiInterfaceFunction( void, BlobLoader, Update, (a,b), const ThreadId& a, bool b )
 eiInterfaceFunction( void, BlobLoader, UpdateBackground, () )
 eiInterfaceFunction( BlobLoader::States, BlobLoader, Prepare, () )
 #if !defined(eiBUILD_RETAIL)

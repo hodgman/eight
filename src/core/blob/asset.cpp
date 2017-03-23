@@ -73,7 +73,7 @@ public:
 	int Find( const Y& item, Fn& pred ) const
 	{
 		const T* i = LinearSearch( Begin(), End(), item, pred );
-		return i == End() ? -1 : i - Begin();
+		return i == End() ? -1 : (int)(i - Begin());
 	}
 private:
 	T* items;
@@ -128,11 +128,11 @@ public:
 		AssetStorage** refreshedAssets;
 		uint refreshedAssetsCount;
 	};
-	void HandleRefreshInterrupt(Scope& a, AssetName* files, uint count, uint worker, uint numWorkers, AtomicPtr<void>& shared)
+	void HandleRefreshInterrupt(Scope& a, AssetName* files, uint count, const ThreadId& t, AtomicPtr<void>& shared)
 	{
 		Scope temp(a, "temp");
 		RefreshState* state = 0;
-		if(worker == 0)
+		if(t.ThreadIndex() == 0)
 		{
 			BlobLoader::States s;
 			do
@@ -147,7 +147,7 @@ public:
 		}
 		else
 		{
-			YieldThreadUntil( WaitForTrue(shared) );
+			YieldThreadUntil( WaitForNonNull(shared) );
 			state = (RefreshState*)(void*)shared;
 		}
 
@@ -156,11 +156,11 @@ public:
 			bool finished;
 			do
 			{
-				m_blobs.Update(worker, true);
+				m_blobs.Update(t, true);
 				finished = true;
 				for( Item* item=m_items.Begin(), *endItem=m_items.End(); item!=endItem; ++item )
 				{
-					if( item->p->Update(worker) != AssetScope::Loaded )
+					if( item->p->Update(t) != AssetScope::Loaded )
 						finished = false;
 				}
 			}while(!finished);
@@ -243,7 +243,7 @@ public:
 					else
 					{
 						perPass.Unwind();
-						toRefreshCount = dependent.size();
+						toRefreshCount = (uint)dependent.size();
 						toRefresh = eiAllocArray(perPass, AssetName, toRefreshCount);
 						uint i=0;
 						for( std::set<AssetName>::iterator it = dependent.begin(), end = dependent.end(); it != end; ++it, ++i )
@@ -261,7 +261,7 @@ public:
 				item->p->EndAssetRefresh();
 			}
 
-			uint count = refreshed.size();
+			uint count = (uint)refreshed.size();
 			state->refreshedAssetsCount = count;
 			state->refreshedAssets = count ? eiAllocArray(temp, AssetStorage*, count) : 0;
 			for( uint i=0, end=count; i != end; ++i )
@@ -283,11 +283,11 @@ public:
 			bool finished;
 			do
 			{
-				m_blobs.Update(worker, true);
+				m_blobs.Update(t, true);
 				finished = true;
 				for( Item* item=m_items.Begin(), *endItem=m_items.End(); item!=endItem; ++item )
 				{
-					if( item->p->Update(worker) != AssetScope::Loaded )
+					if( item->p->Update(t) != AssetScope::Loaded )
 						finished = false;
 				}
 			}while(!finished);
@@ -312,9 +312,9 @@ public:
 
 		++state->finished;
 
-		if(worker == 0)
+		if(t.ThreadIndex() == 0)
 		{//don't let the temp scope unwind until all threads are finished reading/writing to the shared data in it
-			YieldThreadUntil( WaitForValue(state->finished, numWorkers) );
+			YieldThreadUntil( WaitForValue(state->finished, t.NumThreadsInPool()) );
 			shared = 0;
 		}
 	}
@@ -336,7 +336,7 @@ public:
 	AssetRootImpl(Scope&, BlobLoader&, uint)  {}
 	void Created(AssetScope& a, uint depth) { eiASSERT(false); }
 	void Destroyed(AssetScope&) { eiASSERT(false); }
-	void HandleRefreshInterrupt(Scope&, AssetName*, uint, uint, uint, AtomicPtr<void>&) { eiASSERT(false); }
+	void HandleRefreshInterrupt(Scope&, AssetName*, uint, const ThreadId&, AtomicPtr<void>&) { eiASSERT(false); }
 };
 #endif
 }
@@ -345,7 +345,7 @@ eiImplementInterface(AssetRoot, AssetRootImpl);
 eiInterfaceConstructor(AssetRoot, (a,b,c), Scope& a, BlobLoader& b, uint c);
 eiInterfaceFunction(void, AssetRoot, Created, (a,b), AssetScope& a, uint b);
 eiInterfaceFunction(void, AssetRoot, Destroyed, (a), AssetScope& a);
-eiInterfaceFunction(void, AssetRoot, HandleRefreshInterrupt, (a,b,c,d,e,f), Scope& a, AssetName* b, uint c, uint d, uint e, AtomicPtr<void>& f);
+eiInterfaceFunction(void, AssetRoot, HandleRefreshInterrupt, (a,b,c,d,e), Scope& a, AssetName* b, uint c, const ThreadId& d, AtomicPtr<void>& e);
 
 
 #ifdef eiASSET_REFRESH
@@ -445,14 +445,14 @@ void AssetStorage::Construct(const AssetName& n)
 
 void AssetStorage::Assign(Handle h)
 {
-	eiSTATIC_ASSERT( sizeof(s32) == sizeof(m_handle) );
-	((Atomic&)m_handle.id) = (s32)h.id;
+	eiSTATIC_ASSERT( sizeof(AtomicPtr<void>) == sizeof(m_handle) );
+	((AtomicPtr<void>&)m_handle.ptr) = h.ptr;
 }
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-AssetScope::AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMask& users, uint maxAssets, uint maxFactories, AssetRoot& root )
+AssetScope::AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMask& users, uint maxAssets, uint maxFactories, AssetRoot& root, const char* dbgName )
 	: m_root(&root)
 	, m_parent()
 	, m_assets(a, maxAssets, maxAssets*7/10)
@@ -462,13 +462,14 @@ AssetScope::AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMa
 	, m_allocOwner(allocOwner)
 	, m_userThreads(users)
 	, m_loadsInProgress()
+	eiDEBUG( COMMA m_dbgName(dbgName) )
 {
 #if defined(eiASSET_REFRESH)
 	m_root->Created(*this, Depth());
 #endif
 	//TODO - assert parent is null or closed
 }
-AssetScope::AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMask& users, uint maxAssets, uint maxFactories, AssetScope& parent )
+AssetScope::AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMask& users, uint maxAssets, uint maxFactories, AssetScope& parent, const char* dbgName )
 	: m_root(parent.m_root)
 	, m_parent(&parent)
 	, m_assets(a, maxAssets, maxAssets*7/10)
@@ -478,6 +479,7 @@ AssetScope::AssetScope( Scope& a, const SingleThread& allocOwner, const ThreadMa
 	, m_allocOwner(allocOwner)
 	, m_userThreads(users)
 	, m_loadsInProgress()
+	eiDEBUG( COMMA m_dbgName(dbgName) )
 {
 #if defined(eiASSET_REFRESH)
 	m_root->Created(*this, Depth());
@@ -527,14 +529,14 @@ void AssetScope::Close()
 #endif
 }
 
-AssetScope::State AssetScope::Update(uint worker)
+AssetScope::State AssetScope::Update(const ThreadId& t)
 {
-	eiASSERT( GetThreadId()->ThreadIndex() == worker );
+	eiASSERT( GetThreadId()->ThreadIndex() == t.ThreadIndex() );
 	if( IsLoading() )
 		return Loading;
 	s32 resolved = m_resolved;
 	s32 userMask = (s32)m_userThreads.GetMask();
-	s32 thisMask = 1<<worker;
+	s32 thisMask = 1<<t.ThreadIndex();
 	eiASSERT(  userMask & thisMask );
 	eiASSERT( (userMask & 0xFFFF) == userMask );
 	uint pass = ((uint)resolved) >> 16;
@@ -561,7 +563,7 @@ AssetScope::State AssetScope::Update(uint worker)
 	}
 	if( (resolved & thisMask) == 0 )
 	{
-		if( Resolve(worker, pass) )
+		if( Resolve(t.ThreadIndex(), pass) )
 			m_resolved += thisMask;
 	}
 	return Resolving;
@@ -659,9 +661,9 @@ AssetScope::~AssetScope()
 #endif
 }
 
-void AssetScope::Release(uint worker)
+void AssetScope::Release(const ThreadId& t)
 {
-	eiDEBUG( s32 thisMask = 1<<worker );
+	eiDEBUG( s32 thisMask = 1<<t.ThreadIndex() );
 	eiDEBUG( s32 released = m_dbgReleased );
 	eiDEBUG( s32 userMask = (s32)m_userThreads.GetMask() );
 	eiASSERT(  userMask & thisMask );
@@ -749,6 +751,8 @@ AssetScope::FactoryData* AssetScope::FindFactoryBucket(void* factory, const Fact
 	FactoryData& data = m_factories.At(index);
 	if( inserted )
 	{
+		eiASSERT( 0!=(info.factoryThread.GetMask() & m_userThreads.GetMask()) );
+
 		AtomicMax(&m_maxResolveOrder, (int)info.resolveOrder);
 		data.factoryThread = info.factoryThread;
 		data.resolveOrder  = info.resolveOrder;
@@ -815,7 +819,8 @@ Asset* AssetScope::Load( AssetName n, BlobLoader& blobs, void* factory, const Fa
 		{
 			/*scope      */ this,
 			/*asset      */ ptr,
-			/*factory    */ factory
+			/*factory    */ factory,
+			/*name       */ eiDEBUG( true ? n.dbgName : ) "?"
 			/*factoryName*/ eiDEBUG(COMMA info.factoryName),
 		};
 		BlobLoader::Request req =
@@ -925,7 +930,8 @@ AssetName* AssetScope::LoadRefresh(AssetStorage* ptr, void* factory, const Facto
 	{
 		/*scope      */ this,
 		/*asset      */ ptr,
-		/*factory    */ factory
+		/*factory    */ factory,
+		/*name       */ eiDEBUG( users ? users[0].dbgName : ) "?"
 		/*factoryName*/ eiDEBUG(COMMA "Refresh"),
 	};
 	BlobLoader::Request req =
