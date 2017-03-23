@@ -11,8 +11,8 @@ template<class T>
 class ScopeLock : NonCopyable
 {
 public:
-	ScopeLock(T& l) : mutex(l) { mutex.Lock(); }
-	~ScopeLock()               { mutex.Unlock(); }
+	ScopeLock(T& l, bool doJobs=true) : mutex(l) { mutex.Lock(doJobs); }
+	~ScopeLock()                                 { mutex.Unlock(); }
 private:
 	T& mutex;
 };
@@ -20,7 +20,7 @@ private:
 class Futex : NonCopyable
 {
 public:
-	void Lock();
+	void Lock(bool doJobs=true);
 	bool TryLock();
 	void Unlock();
 
@@ -30,7 +30,7 @@ private:
 };
 
 
-inline void Futex::Lock()
+inline void Futex::Lock(bool doJobs)
 {
 	//eiProfile("Futex::Lock");
 	struct TryLock { TryLock( Futex* self ) : self(self) {} Futex* self;
@@ -39,7 +39,7 @@ inline void Futex::Lock()
 			return self->TryLock();
 		}
 	};
-	YieldThreadUntil( TryLock(this) );
+	YieldThreadUntil( TryLock(this), 0, doJobs );
 }
 
 inline bool Futex::TryLock()

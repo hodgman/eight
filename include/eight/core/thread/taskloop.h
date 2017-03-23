@@ -4,8 +4,9 @@
 #include <eight/core/types.h>
 #include <eight/core/thread/tasksection.h>
 #include <eight/core/thread/latent.h>
+#include <eight/core/thread/atomic.h>
 
-extern int g_profilersRunning;//TODO - hax
+extern eight::Atomic g_profilersRunning;//TODO - hax
 extern int g_profileFramesLeft;
 namespace eight {
 //------------------------------------------------------------------------------
@@ -21,9 +22,9 @@ eiInfoGroup( TaskLoop, false );
 class TaskLoop
 {
 public:
-	typedef void (FnInterrupt      )(Scope& a, void* interrupt, void* shared, uint worker, uint numWorkers);
-	typedef void (FnUserTask       )(Scope& a, Scope& scratch, void* shared, void* thread, void* preparedTask, uint worker);
-	typedef void*(FnUserPrepareTask)(Scope& a, Scope& scratch, void* shared, void* thread, const void* prevTask, void** interrupt);//return null to end loop
+	typedef void (FnInterrupt      )(Scope& a, void* interrupt, void* shared, const ThreadId&);
+	typedef void (FnUserTask       )(Scope& scratch, void* shared, void* thread, void* preparedTask, const ThreadId&);
+	typedef void*(FnUserPrepareTask)(Scope& scratch, void* shared, void* thread, const void* prevTask, const ThreadId&, void** interrupt);//return null to end loop
 	struct Config
 	{
 		void*              userArgs;
@@ -38,7 +39,7 @@ public:
 
 	ConcurrentFrames::Type MaxConcurrentFrames() const { return (ConcurrentFrames::Type)m_numAllocs; }
 
-	void Run( uint workerIdx, uint numWorkers );
+	void Run( const ThreadId& );
 	void RunBackground();
 
 	uint Frame() const;//returns the frame that the current thread is executing
@@ -67,16 +68,16 @@ public:
 		}
 #endif
 		TaskLoop& loop = *reinterpret_cast<TaskLoop*>(arg);
-		loop.Run( thread.ThreadIndex(), thread.NumThreadsInPool() );
+		loop.Run( thread );
 		return 0;
 	}
 private:
-	void PrepareNextFrameGate( Scope& thread, Semaphore& section, TaskSection& task, u32 thisFrame, void* userThread, void* prevTask, uint worker, uint numWorkers );
-	void PrepareNextFrameConcurrent( Scope& thread, Semaphore& section, u32 thisFrame, void* userThread, void* prevTask, uint worker, uint numWorkers );
-	void EnterLoop( Scope& thread, void* userThread, uint* frame, uint workerIdx, uint numWorkers );
+	void PrepareNextFrameGate( TaskList& section, TaskSection& task, u32 thisFrame, void* userThread, void* prevTask, const ThreadId& t );
+	void PrepareNextFrameConcurrent( TaskList& section, u32 thisFrame, void* userThread, void* prevTask, const ThreadId& t );
+	void EnterLoop( Scope& thread, void* userThread, uint* frame, const ThreadId& t );
 	void ExitLoop();
-	void PrepareFrameAndUnwind( Scope& thread, uint workerIdx, uint frame, void* userThread, void* prevTask, uint numWorkers );
-	void PrepareFrame( Scope& thread, uint workerIdx, uint frame, void* userThread, void* prevTask );
+	void PrepareFrameAndUnwind( uint frame, void* userThread, void* prevTask, const ThreadId& t );
+	void PrepareFrame( const ThreadId&, uint frame, void* userThread, void* prevTask );
 	Scope& GetScratch( uint allocId, uint thread );
 	uint**            m_tlsFrame;
 	u32               m_memSize;

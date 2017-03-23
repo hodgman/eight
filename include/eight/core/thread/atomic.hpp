@@ -28,6 +28,12 @@ struct WaitForTrue
 	WaitForTrue( const Atomic& a ) : a(a) {} const Atomic& a; 
 	bool operator()() const { return a!=0; }
 };
+struct WaitForNonNull
+{
+	template<class T>
+	WaitForNonNull( const AtomicPtr<T>& a ) : a((AtomicPtr<void>&)a) {} const AtomicPtr<void>& a; 
+	bool operator()() const { return ((const void*)a)!=0; }
+};
 
 struct WaitForFalse
 {
@@ -40,14 +46,19 @@ struct WaitForValue
 	WaitForValue( const Atomic& a, s32 v ) : a(a), value(v) {} const Atomic& a; s32 value;
 	bool operator()() const { return value == (s32)a; }
 };
+struct WaitForGreaterEqual
+{
+	WaitForGreaterEqual( const Atomic& a, s32 v ) : a(a), value(v) {} const Atomic& a; s32 value;
+	bool operator()() const { return (s32)a >= value; }
+};
 
 struct WaitForTrue64
 {
-	WaitForTrue64( const u64&    a ) : a((Atomic*)&a) {}
-	WaitForTrue64( const s64&    a ) : a((Atomic*)&a) {} 
-	WaitForTrue64( const double& a ) : a((Atomic*)&a) {} const Atomic* a; 
+	WaitForTrue64( const u64&    a ) : a((Atomic64&)a) {}
+	WaitForTrue64( const s64&    a ) : a((Atomic64&)a) {} 
+	WaitForTrue64( const double& a ) : a((Atomic64&)a) {} const Atomic64& a; 
 	bool operator()() const
 	{
-		return a[0]!=0 && a[1]!=0;
+		return a!=0;
 	}
 };

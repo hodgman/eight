@@ -14,16 +14,20 @@ namespace eight {
 
 eiInfoGroup( TaskSection, false );
 
-#define eiEnterTaskSection_Impl(section, option, lock, extra)								\
+#define eiEnterTaskSection_Impl(section, option, lock, extra, iterate, type, comment)		\
 	{																						\
 		using namespace eight::internal;													\
 		eiASSERT( &*_ei_thread_id );														\
-		extra; lock _ei_section_lock;														\
-		TaskDistribution  _ei_task_distribution_value										\
-			= EnterTaskSection##option(section, *_ei_thread_id, _ei_section_lock);			\
-		if( _ei_task_distribution_value.thisWorker >= 0 )									\
+		bool _ei_break=false; extra; lock _ei_section_lock;									\
+		TaskDistribution _ei_task_distribution_value;										\
+		while( !_ei_break && ((_ei_task_distribution_value									\
+			= EnterTaskSection##option(section, *_ei_thread_id, _ei_section_lock)),			\
+			_ei_task_distribution_value.thisWorker >= 0) )									\
 		{																					\
+			iterate;																		\
+			TaskDistribution* _ei_task_distribution = &_ei_task_distribution_value;			\
 			eiASSERT( _ei_task_distribution_value.numWorkers > 0 );							\
+			eiProfile(type ": " comment " (" #section ")");									\
 			TaskSectionScope<lock> _ei_task_scope = MakeScope(_ei_task_distribution_value	\
 			                                                 ,_ei_section_lock, &section);	\
 			eiDEBUG(const void* const _ei_this_section = &section;)							//
@@ -31,13 +35,13 @@ eiInfoGroup( TaskSection, false );
 //-V:eiBeginSectionRedundant:561
 	
 ///@define eiBeginSectionTask fo bar
-#define eiBeginSectionTask(	     section )    eiEnterTaskSection_Impl(section, ,         TaskSectionNoLock, )		///< Begin execution of a block that is scheduled by a TaskSection object
-#define eiBeginSectionThread(    section )    eiEnterTaskSection_Impl(section,Mask,      TaskSectionMaskLock, )	///< Begin execution of a block that is scheduled by a ThreadMask object
-#define eiBeginSectionRedundant( section )    eiEnterTaskSection_Impl(section,Multiple,  TaskSectionNoLock, )		///< Begin execution of a possibly redundant block that is scheduled by a TaskSection object
-#define eiBeginSectionSemaphore( section )    eiEnterTaskSection_Impl(section,Semaphore, TaskSectionLock,				\
-                                                                            eiASSERT(_ei_semaphore_lock==Nil());		\
-																			eiDEBUG(bool _ei_semaphore_lock = true;)	\
-																			eiUNUSED( _ei_semaphore_lock ); )///< 
+#define eiBeginSectionTask(	     section, ... )    eiEnterTaskSection_Impl(section, ,         TaskSectionNoLock, , _ei_break=true, "Task", __VA_ARGS__)		///< Begin execution of a block that is scheduled by a TaskSection object
+#define eiBeginSectionThread(    section, ... )    eiEnterTaskSection_Impl(section,Mask,      TaskSectionMaskLock, , _ei_break=true, "Thread", __VA_ARGS__)	///< Begin execution of a block that is scheduled by a ThreadMask object
+#define eiBeginSectionRedundant( section, ... )    eiEnterTaskSection_Impl(section,Multiple,  TaskSectionNoLock, , _ei_break=true, "Task", __VA_ARGS__)		///< Begin execution of a possibly redundant block that is scheduled by a TaskSection object
+#define eiBeginSectionTaskList( section, ... )    eiEnterTaskSection_Impl(section,TaskList, TaskSectionLock,				\
+                                                                            eiASSERT(_ei_tasklist_lock==Nil());		\
+																			eiDEBUG(bool _ei_tasklist_lock = true;)	\
+																			eiUNUSED( _ei_tasklist_lock );, , "TaskList", __VA_ARGS__ )///< 
 
 //todo - use lambda syntax (e.g. auto l =[ &]{};) to remove the need for begin/end
 
@@ -47,7 +51,7 @@ eiInfoGroup( TaskSection, false );
 	}																						//
 
 //if Exit isn't paired with Enter, MSVC reports "error C2678: binary '==' : no operator found which takes a left-hand operand of type 'eight::Nil' (or there is no acceptable conversion)"
-//If two semaphore sections are nested, MSVC reports " error C2678: binary '==' : no operator found which takes a left-hand operand of type 'bool' (or there is no acceptable conversion)"
+//If two taskList sections are nested, MSVC reports " error C2678: binary '==' : no operator found which takes a left-hand operand of type 'bool' (or there is no acceptable conversion)"
 
 #define eiResetTaskSection(section)															\
 	{  internal::ResetTaskSection(section);  }												//
@@ -55,12 +59,12 @@ eiInfoGroup( TaskSection, false );
 // Creates a synchronisation fence that halts any thread in the pool here, until all threads
 //  have completed the specified section.
 #if defined(eiBUILD_USE_TASK_WAKE_EVENTS)
-#define eiWaitForSection(section)															\
-	{eiProfile("Wait for "#section);														\
+#define eiWaitForSection(section, ...)														\
+	{eiProfile("Wait: " __VA_ARGS__ "(" #section ")" );										\
 	eight::YieldThreadUntil( eight::internal::WaitForTaskSection(&section), 0, true, true );}		//
 #else
 #define eiWaitForSection(section)															\
-	{eiProfile("Wait for "#section);														\
+	{eiProfile("Wait: " __VA_ARGS__ "(" #section ")" );										\
 	eight::YieldThreadUntil( eight::internal::WaitForTaskSection(&section) );}				//
 #endif
 
@@ -90,6 +94,8 @@ eiInfoGroup( TaskSection, false );
 		eiASSERT( workerIndex >= 0 );														\
 		DistributeTask( workerIndex, numWorkers, items, begin, end );						\
 	}																						//
+
+#define eiGetTaskDistribution() (*_ei_task_distribution)
 
 template<class T>
 inline void DistributeTask( uint workerIndex, uint numWorkers, T items, T &begin, T& end )
@@ -127,7 +133,7 @@ struct TaskDistribution
 struct SectionBlob;
 class TaskSection;
 class ThreadMask;
-class Semaphore;
+class TaskList;
 class JobPool;
 
 namespace internal
@@ -147,10 +153,10 @@ namespace internal
 		return &a == &b;
 	}
 	extern Nil _ei_this_section;
-	extern Nil _ei_semaphore_lock;
+	extern Nil _ei_tasklist_lock;
 	struct Tag_ThreadId {}; struct Tag_TaskDistribution {};
 	extern ThreadLocalStatic<ThreadId, Tag_ThreadId> _ei_thread_id;
-	extern ThreadLocalStatic<TaskDistribution, Tag_TaskDistribution> _ei_task_distribution;
+	//extern ThreadLocalStatic<TaskDistribution, Tag_TaskDistribution> _ei_task_distribution;
 	
 	struct TaskSectionMaskLock;
 	struct TaskSectionNoLock;
@@ -159,20 +165,20 @@ namespace internal
 	TaskDistribution EnterTaskSection( const TaskSection&, const ThreadId&, TaskSectionNoLock& );
 	TaskDistribution EnterTaskSectionMask( const ThreadMask&, const ThreadId&, TaskSectionMaskLock& );
 	TaskDistribution EnterTaskSectionMultiple( const TaskSection&, const ThreadId&, TaskSectionNoLock& );
-	TaskDistribution EnterTaskSectionSemaphore( Semaphore&, const ThreadId&, TaskSectionLock& );
+	TaskDistribution EnterTaskSectionTaskList( TaskList&, const ThreadId&, TaskSectionLock& );
 	void ExitTaskSection( TaskSection&, const TaskDistribution&, const ThreadId& );
 	void ExitTaskSectionMask();
-	void ExitTaskSectionSemaphore( Semaphore&, const TaskDistribution&, const ThreadId& );
+	void ExitTaskSectionTaskList( TaskList&, const TaskDistribution&, const ThreadId& );
 	bool IsTaskSectionDone(const TaskSection&);
-	bool IsTaskSectionDone(const Semaphore&);
+	bool IsTaskSectionDone(const TaskList&);
 	bool IsTaskSectionDone(const SectionBlob&);
 	bool IsInTaskSection(const TaskSection&);//n.b. these don't work in retail builds...
-	bool IsInTaskSection(const Semaphore&);
+	bool IsInTaskSection(const TaskList&);
 	bool IsInTaskSection(const ThreadMask&);
 	bool IsInTaskSection(const SectionBlob&);
 	void ResetTaskSection(SectionBlob&);
 	void ResetTaskSection(TaskSection&);
-	void ResetTaskSection(Semaphore&);
+	void ResetTaskSection(TaskList&);
 	
 	struct TaskSectionLockBase
 	{
@@ -218,11 +224,11 @@ namespace internal
 	{
 		 TaskSectionLock() : locked() {}
 		~TaskSectionLock() { eiASSERT( !locked ); }
-		void Lock(const Semaphore& s) { locked = true; TaskSectionLockBase::Enter(&s); }
+		void Lock(const TaskList& s) { locked = true; TaskSectionLockBase::Enter(&s); }
 		void Exit( TaskSection& section, const TaskDistribution& dist, const ThreadId& thread )
 		{
 			eiASSERT(locked);
-			ExitTaskSectionSemaphore((Semaphore&)section, dist, thread);
+			ExitTaskSectionTaskList((TaskList&)section, dist, thread);
 			eiDEBUG( locked = false );
 			TaskSectionLockBase::Exit(&section);
 		}
@@ -234,7 +240,7 @@ namespace internal
 	{
 		WaitForTaskSection( const TaskSection* s ) : s(s) {} const TaskSection* s; 
 		WaitForTaskSection( const SectionBlob* s ) : s((TaskSection*)s) {} 
-		WaitForTaskSection( const Semaphore* s ) : s((TaskSection*)s) {} 
+		WaitForTaskSection( const TaskList* s ) : s((TaskSection*)s) {} 
 		bool operator()() const { return IsTaskSectionDone(*s); }
 	};
 		
@@ -243,22 +249,23 @@ namespace internal
 	{
 		TaskSection* m_section;
 		T* m_section_lock;
-		TaskDistribution* m_task_distribution_backup;
-		eiDEBUG( TaskDistribution* m_task_distribution_current );
+	//	TaskDistribution* m_task_distribution_backup;
+	//	eiDEBUG( TaskDistribution* m_task_distribution_current );
+		TaskDistribution* m_task_distribution_current;
 	public:
 		TaskSectionScope(TaskDistribution& new_value, T& lock, TaskSection& section)
 		{
 			m_section = &section;
 			m_section_lock = &lock;
-			m_task_distribution_backup  = _ei_task_distribution;
-			_ei_task_distribution       = &new_value;
-			eiDEBUG( m_task_distribution_current = &new_value );
+		//	m_task_distribution_backup  = _ei_task_distribution;
+		//	_ei_task_distribution       = &new_value;
+			m_task_distribution_current = &new_value;
 		}
 		~TaskSectionScope()
 		{
-			eiASSERT( _ei_task_distribution == m_task_distribution_current );
-			m_section_lock->Exit(*m_section, *_ei_task_distribution, *_ei_thread_id);
-			_ei_task_distribution = m_task_distribution_backup;
+		//	eiASSERT( _ei_task_distribution == m_task_distribution_current );
+			m_section_lock->Exit(*m_section, *m_task_distribution_current, *_ei_thread_id);
+		//	_ei_task_distribution = m_task_distribution_backup;
 		}
 	};
 	template<class T>
@@ -274,7 +281,7 @@ struct TaskSectionType
 	{
 		TaskSection = 0,
 		ThreadMask,
-		Semaphore
+		TaskList
 	};
 };
 
@@ -297,25 +304,25 @@ public:
 	
 	operator SectionBlob() const { eiSTATIC_ASSERT(sizeof(*this)==sizeof(SectionBlob)); return *reinterpret_cast<const SectionBlob*>(this); }
 protected:
-	TaskSection( s32 workersUsed, bool semaphore, bool mask );
+	TaskSection( s32 workersUsed, bool taskList, bool mask );
 	s32 WorkerMask() const { return WorkersUsed(); }
 private:
 	void Init(int maxThreads, u32 threadMask);
 	//The high two bits of workersUsed record the type
-	//For non-semaphore sections: Bitmasks of the thread-indices that will run the task.
-	//For semaphore sections: Number of times the task has been invoked, and required number of times before it is done.
-	//                        The high-bit of workersDone is locked upon incrementing the counter/starting the task, and cleared upon ending the task.
+	//For non-taskList sections: Bitmasks of the thread-indices that will run the task.
+	//For taskList sections: Number of times the task has been invoked, and required number of times before it is done.
+	//                        The high-bits of workersDone are set upon starting the task, and cleared upon ending the task.
 	Atomic workersDone;
 	s32    workersUsed;//When both vars match, the task has been completed.
-	s32 WorkersUsed () const;
-	bool IsSemaphore() const;
-	bool IsMask     () const;
+	s32 WorkersUsed() const;
+	bool IsTaskList() const;
+	bool IsMask    () const;
 	friend SectionBlob;
 	friend TaskDistribution internal::EnterTaskSection( const TaskSection&, const ThreadId&, TaskSectionNoLock& );
 	friend TaskDistribution internal::EnterTaskSectionMultiple( const TaskSection&, const ThreadId&, TaskSectionNoLock& );
 	friend TaskDistribution internal::EnterTaskSectionMask( const ThreadMask&, const ThreadId&, TaskSectionMaskLock& );
-	friend TaskDistribution internal::EnterTaskSectionSemaphore( Semaphore&, const ThreadId&, TaskSectionLock& );
-	friend             void internal::ExitTaskSectionSemaphore( Semaphore&, const TaskDistribution&, const ThreadId& );
+	friend TaskDistribution internal::EnterTaskSectionTaskList( TaskList&, const ThreadId&, TaskSectionLock& );
+	friend             void internal::ExitTaskSectionTaskList( TaskList&, const TaskDistribution&, const ThreadId& );
 	friend             void internal::ExitTaskSection( TaskSection&, const TaskDistribution&, const ThreadId& );
 	friend             bool internal::IsTaskSectionDone( const TaskSection& );
 	friend             void internal::ResetTaskSection( TaskSection& );
@@ -335,7 +342,7 @@ public:
 
 	friend TaskDistribution internal::EnterTaskSectionMask( const ThreadMask&, const ThreadId&, TaskSectionMaskLock& );
 protected:
-	ThreadMask( s32 workersUsed, bool semaphore, bool mask );
+	ThreadMask( s32 workersUsed, bool taskList, bool mask );
 	s32 WorkerMask() const { return TaskSection::WorkerMask(); }
 };
 
@@ -353,15 +360,15 @@ public:
 };
 
 
-class Semaphore : private TaskSection
+class TaskList : private TaskSection
 {
 public:
-	Semaphore( int maxThreads=1 );
+	TaskList( int maxThreads=1 );
 
 	operator SectionBlob() const { eiSTATIC_ASSERT(sizeof(*this)==sizeof(SectionBlob)); return *reinterpret_cast<const SectionBlob*>(this); }
 
-	friend TaskDistribution internal::EnterTaskSectionSemaphore( Semaphore&, const ThreadId&, TaskSectionLock& );
-	friend             void internal::ExitTaskSectionSemaphore( Semaphore&, const TaskDistribution&, const ThreadId& );
+	friend TaskDistribution internal::EnterTaskSectionTaskList( TaskList&, const ThreadId&, TaskSectionLock& );
+	friend             void internal::ExitTaskSectionTaskList( TaskList&, const TaskDistribution&, const ThreadId& );
 };
 
 
@@ -369,7 +376,7 @@ inline TaskSection TaskSection::CurrentThread() { return TaskSection( SingleThre
 
 eiSTATIC_ASSERT( sizeof(SectionBlob) == sizeof(TaskSection) );
 eiSTATIC_ASSERT( sizeof(SectionBlob) == sizeof(ThreadMask) );
-eiSTATIC_ASSERT( sizeof(SectionBlob) == sizeof(Semaphore) );
+eiSTATIC_ASSERT( sizeof(SectionBlob) == sizeof(TaskList) );
 
 //------------------------------------------------------------------------------
 } // namespace eight

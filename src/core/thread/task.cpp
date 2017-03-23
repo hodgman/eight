@@ -86,7 +86,7 @@ TaskSchedule eight::MakeSchedule( Scope& a_, TaskGroupProto** groups, uint count
 	{
 		schedule->groups.count = count;
 		a.Alloc( schedule->groups.DataSize() );
-		// Initialise the schedule and it's task groups. Mesure out allocations in the tasks blob for each group.
+		// Initialise the schedule and it's task groups. Measure out allocations in the tasks blob for each group.
 		for( uint i=0, end=count; i != end; ++i )
 		{
 			const TaskGroupProto& input = *groups[i];
@@ -97,26 +97,26 @@ TaskSchedule eight::MakeSchedule( Scope& a_, TaskGroupProto** groups, uint count
 			//Hax( &data.section[TaskGroup::s_frames-1] );
 
 			List<Task> taskList = { input.numTasks };
-			data.tasks.address = measureTasks.Alloc( taskList.Bytes() );
+			data.tasks.address = (u32)measureTasks.Alloc( taskList.Bytes() );
 			data.dependencies.count = input.numDependencies;
 
 			for( uint t=0, end=input.numTasks; t!=end; ++t )
 			{
-				Address<u8> addr = { measureTasks.Alloc( input.tasks[t]->blobSize ) };
+				Address<u8> addr = { (u32)measureTasks.Alloc( input.tasks[t]->blobSize ) };
 				input.tasks[t]->outBlobAddress = addr;
 			}
 
-			TaskGroup* output = (TaskGroup*)a.Alloc( data.Bytes(), sizeof(TaskGroup) );
+			TaskGroup* output = (TaskGroup*)a.Alloc( data.Bytes() );
 			*output = data;
 			u32* flags = eiAllocArray(a, u32, data.DependencyFlagsLength());
 			memset( flags, 0, sizeof(u32)*data.DependencyFlagsLength() );
 			output->dependencyFlags = flags;
 			schedule->groups[i] = output;
 		}
-		schedule->bytes = a.Mark() - (u8*)schedule;
+		schedule->bytes = (u32)(a.Mark() - (u8*)schedule);
 	}
 
-	uint taskBlobSize = measureTasks.Bytes();
+	uint taskBlobSize = (uint)measureTasks.Bytes();
 	TaskBlob* taskBlob = (TaskBlob*)a.Alloc( taskBlobSize );
 	taskBlob->bytes = taskBlobSize;
 	{
@@ -138,7 +138,7 @@ TaskSchedule eight::MakeSchedule( Scope& a_, TaskGroupProto** groups, uint count
 				}
 				eiASSERT( blobDepend && "Dependency wasn't included in the 'groups' input array" );
 				output.dependencies[d] = blobDepend;
-				output.dependencyFlags[(d+31)/32] |= inDepend.prevFrame?u32(1)<<(d&31):0;
+				output.dependencyFlags[d/32] |= inDepend.prevFrame?(u32(1)<<(d&31)):0;
 			}
 
 			//Copy task structs into the task blob
@@ -152,6 +152,7 @@ TaskSchedule eight::MakeSchedule( Scope& a_, TaskGroupProto** groups, uint count
 				tasks[t].task = inTask.task;
 				tasks[t].user = inTask.user;
 				tasks[t].blobSize = inTask.blobSize;
+				tasks[t].tag = inTask.tag;
 				if( !inTask.blobSize )
 					tasks[t].blob = 0;
 				else
@@ -169,13 +170,18 @@ TaskSchedule eight::MakeSchedule( Scope& a_, TaskGroupProto** groups, uint count
 	return results;
 }
 
-static void RunTasks( Scope& a, List<Task>& tasks )
+static void RunTask( List<Task>& tasks, uint i )
+{
+		Task& task = tasks[i];
+		eiASSERT( task.task );
+		eiProfile( task.tag );
+		task.task( task.user, task.blob.Ptr() );
+}
+static void RunTasks( List<Task>& tasks )
 {
 	for( uint i=0, end=tasks.count; i != end; ++i )
 	{
-		Task& task = tasks[i];
-		eiASSERT( task.task );
-		task.task( task.user, task.blob.Ptr(), task.blobSize );
+		RunTask( tasks, i );
 	}
 }
 
@@ -200,42 +206,55 @@ bool eight::StepSchedule( Scope& a, uint a_frame, const TaskSchedule& data, uint
 	}
 	eiEndSection( resetThread );
 
-	for( uint j=0, end=group.dependencies.count; j != end; ++j )
+	auto WaitForDependencies = [&]()
 	{
-		TaskGroup& depend = *group.dependencies[j];
-		uint f = frame;
-		if( group.dependencyFlags[(j+31)/32] & (u32(1)<<(j&31)) )//todo - move magic numbers. prev frame flag.
+		for( uint j=0, end=group.dependencies.count; j != end; ++j )
 		{
-			if( eiUnlikely(a_frame==0) )
-				continue;//on first frame, can't wait on previous frame
-			f = f ? f-1 : TaskGroup::s_frames-1;
+			TaskGroup& depend = *group.dependencies[j];
+			uint f = frame;
+			if( group.dependencyFlags[j/32] & (u32(1)<<(j&31)) )//todo - move magic numbers. prev frame flag.
+			{
+				if( eiUnlikely(a_frame==0) )
+					continue;//on first frame, can't wait on previous frame
+				f = f ? f-1 : TaskGroup::s_frames-1;
+			}
+			eiWaitForSection( depend.section[f] );
 		}
-		eiWaitForSection( depend.section[f] );
-	}
+	};
 
+	List<Task>& tasks = *group.tasks.Ptr(taskBlob);
 	switch( group.section[frame].Type() )//todo this should be a utility function in tasksection.cpp/h
 	{
 	case TaskSectionType::TaskSection:
 		{
 			TaskSection& section = reinterpret_cast<TaskSection&>(group.section[frame]);
-			eiBeginSectionTask( section );
-			::RunTasks( a, *group.tasks.Ptr(taskBlob) );
+			eiBeginSectionTask( section, "StepSchedule" );
+				WaitForDependencies();
+				::RunTasks( tasks );
 			eiEndSection( section );
 		}
 		break;
 	case TaskSectionType::ThreadMask:
 		{
 			ThreadMask& section = reinterpret_cast<ThreadMask&>(group.section[frame]);
-			eiBeginSectionThread( section );
-			::RunTasks( a, *group.tasks.Ptr(taskBlob) );
+			eiBeginSectionThread( section, "StepSchedule" );
+				WaitForDependencies();
+				::RunTasks( tasks );
 			eiEndSection( section );
 		}
 		break;
-	case TaskSectionType::Semaphore:
+	case TaskSectionType::TaskList:
 		{
-			Semaphore& section = reinterpret_cast<Semaphore&>(group.section[frame]);
-			eiBeginSectionSemaphore( section );
-			::RunTasks( a, *group.tasks.Ptr(taskBlob) );
+			TaskList& section = reinterpret_cast<TaskList&>(group.section[frame]);
+			bool waited = false;
+			eiBeginSectionTaskList( section, "StepSchedule" );
+				if( !waited )
+				{
+					waited = true;
+					WaitForDependencies();
+				}
+				eiASSERT( eiGetTaskDistribution().numWorkers == tasks.count );
+				::RunTask( tasks, eiGetTaskDistribution().thisWorker );
 			eiEndSection( section );
 		}
 		break;

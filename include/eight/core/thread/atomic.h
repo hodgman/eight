@@ -94,6 +94,7 @@ struct WaitForValue;
 struct WaitForTrue64;
 
 void AtomicWrite(u32* out, u32 in);
+void AtomicWrite(u64* out, u64 in);
 
 class Atomic
 {
@@ -118,25 +119,55 @@ private:
 };
 eiSTATIC_ASSERT( sizeof(u32) == sizeof(Atomic) );
 
+class Atomic64
+{
+public:
+	Atomic64( const Atomic64& );
+	Atomic64& operator=( const Atomic64& );
+	explicit Atomic64( s64 i=0 );
+	operator const s64() const;
+	Atomic64& operator=( s64 );
+	const s64 operator++();
+	const s64 operator--();
+	const s64 operator++(int);///< N.B. slower than prefix
+	const s64 operator--(int);///< N.B. slower than prefix
+	void Increment( s64& before, s64& after );
+	void Decrement( s64& before, s64& after );
+	void operator+=( s64 );
+	void operator-=( s64 );
+
+	bool SetIfEqual( s64 newValue, s64 oldValue );///< sets to new if currently equal to old. returns true if succeeded. N.B. can be misleading if ABA problem is applicable.
+private:
+	volatile s64 value;
+};
+eiSTATIC_ASSERT( sizeof(u64) == sizeof(Atomic64) );
+
 template<class T>
 class AtomicPtr
 {
 public:
+#ifdef eiBUILD_64BIT
+	typedef Atomic64 AtomicType;
+#else
+	typedef Atomic AtomicType;
+#endif
+	typedef ptrdiff_t IntType;
+
 	AtomicPtr(){}
 	explicit AtomicPtr( T* );
 	AtomicPtr( const AtomicPtr& );
 	AtomicPtr& operator=( const AtomicPtr& );
 	AtomicPtr& operator=( T* );
 	operator T*();
-	operator const Atomic&() const { return data; }
+	operator const T*() const;
+	operator const AtomicType&() const { return data; }
 
 	bool SetIfEqual( T* newValue, T* oldValue );///< sets to new if currently equal to old. returns true if succeeded. N.B. can be misleading if ABA problem is applicable.
 private:
-	Atomic data;
+	AtomicType data;
 };
-eiSTATIC_ASSERT( sizeof(void*) == sizeof(Atomic) );
 
-template<class T> AtomicPtr<T>::AtomicPtr( T* p ) : data(*(s32*)&value)
+template<class T> AtomicPtr<T>::AtomicPtr( T* p ) : data(*(IntType*)&value)
 {
 }
 template<class T> AtomicPtr<T>::AtomicPtr( const AtomicPtr& other ) : data(other.data)
@@ -149,18 +180,24 @@ template<class T> AtomicPtr<T>& AtomicPtr<T>::operator=( const AtomicPtr& other 
 }
 template<class T> AtomicPtr<T>& AtomicPtr<T>::operator=( T* value )
 {
-	data = *(s32*)&value;
+	data = *(IntType*)&value;
 	return *this;
 }
 template<class T> bool AtomicPtr<T>::SetIfEqual( T* newValue, T* oldValue )
 {
-	return data.SetIfEqual( *(s32*)&newValue, *(s32*)&oldValue );
+	return data.SetIfEqual( *(IntType*)&newValue, *(IntType*)&oldValue );
 }
 template<class T> AtomicPtr<T>::operator T*()
 {
-	s32 value = data;
+	IntType value = data;
 	return *(T**)&value;
 }
+template<class T> AtomicPtr<T>::operator const T*() const
+{
+	IntType value = data;
+	return *(T**)&value;
+}
+eiSTATIC_ASSERT( sizeof(void*) == sizeof(AtomicPtr<void>) );
 
 //------------------------------------------------------------------------------
 #include "atomic.hpp"

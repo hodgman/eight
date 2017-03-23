@@ -10,6 +10,7 @@
 #include <eight/core/thread/taskloop.h>
 #include <eight/core/thread/pool.h>
 #include <eight/core/traits.h>
+#include <eight/core/typeinfo.h>
 namespace eight {
 
 //------------------------------------------------------------------------------
@@ -36,18 +37,18 @@ struct SelectInterruptHandler<T, void>
 class SimLoop
 {
 	SimLoop(); ~SimLoop();
-	template<class T> static void* PrepareGameLoop(Scope& a, Scope& frame, void* shared, void* thread, const void* prevFrame, void** interrupt)
+	template<class T> static void* PrepareGameLoop(Scope& frame, void* shared, void* thread, const void* prevFrame, const ThreadId& t, void** interrupt)
 	{
-		return ((T*)shared)->Prepare( a, frame, (T::ThreadData*)thread, (T::FrameData*)prevFrame, (typename T::InterruptData**)interrupt );
+		return ((T*)shared)->Prepare( frame, (T::ThreadData*)thread, (T::FrameData*)prevFrame, t, (typename T::InterruptData**)interrupt );
 	}
-	template<class T> static void ExecuteGameLoop(Scope& a, Scope& frame, void* shared, void* thread, void* taskData, uint worker)
+	template<class T> static void ExecuteGameLoop(Scope& frame, void* shared, void* thread, void* taskData, const ThreadId& t)
 	{
-		((T*)shared)->Execute( a, frame, (T::ThreadData*)thread, (T::FrameData*)taskData, worker );
+		((T*)shared)->Execute( frame, (T::ThreadData*)thread, (T::FrameData*)taskData, t );
 	}
 	template<class T, class Y> friend struct SelectInterruptHandler;
-	template<class T> static void HandleInterrupt(Scope& a, void* interrupt, void* shared, uint worker, uint numWorkers)
+	template<class T> static void HandleInterrupt(Scope& a, void* interrupt, void* shared, const ThreadId& t)
 	{
-		((T*)shared)->HandleInterrupt( a, (T::InterruptData*)interrupt, worker, numWorkers );
+		((T*)shared)->HandleInterrupt( a, (T::InterruptData*)interrupt, t );
 	}
 	template<class T> struct GameLoopArgs { Scope* a; typename T::Args* userArgs; };
 	template<class T> static void* InitGameLoopThread(Scope& thread, uint idx, TaskLoop& loop, TaskLoop::Config* cfg)
@@ -55,7 +56,7 @@ class SimLoop
 		GameLoopArgs<T>& args = *(GameLoopArgs<T>*)cfg->userArgs;
 		if( idx == 0 )
 		{
-			Scope& a = *(eiNew(thread, Scope)( *args.a, "TaskLoop Main" ));//ensure the 'T' is destructed before the thread pool exits
+			Scope& a = eiNew(thread, Scope)( *args.a, "TaskLoop Main" );//ensure the 'T' is destructed before the thread pool exits
 			cfg->userShared  = T::Create(a, thread, *args.userArgs, loop);
 			cfg->userPrepare = &PrepareGameLoop<T>;
 			cfg->userTask    = &ExecuteGameLoop<T>;

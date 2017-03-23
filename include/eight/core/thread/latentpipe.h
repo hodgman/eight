@@ -29,7 +29,7 @@ protected:
 	struct Queue
 	{
 		uint count;
-		static uint Padding() { Queue* t=0; return ((u8*)&t->storage) - ((u8*)(&t->count+1)); }
+		static uint Padding() { Queue* t=0; return (int)( ((u8*)&t->storage) - ((u8*)(&t->count+1)) ); }
 		T storage;
 	};
 	LatentPipe( Scope& a, uint capacity ) : BaseLatentPipe(a, capacity, sizeof(T), Queue::Padding()) {}

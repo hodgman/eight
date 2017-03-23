@@ -9,43 +9,42 @@ inline bool HashTableBase::WaitForValid::operator()() const
 	return false;
 }
 
-template<class K, class V, bool T>
-THashTableBase<K,V,T>::THashTableBase( Scope& a, uint capacity, uint numBuckets )
+//------------------------------------------------------------------------------
+
+template<class K, bool T>
+THashSetBase<K,T>::THashSetBase( Scope& a, uint capacity, uint numBuckets )
 	: freeHead(0)
 	, numBuckets(numBuckets)
 	, capacity(capacity)
 	, bucketHeads(eiAllocArray(a, u32, numBuckets))
 	, keyList(eiAllocArray(a, Node, capacity))
-	, valueList(eiAllocArray(a, V, capacity))
 {
 	Init(capacity);
 }
 
-template<class K, class V, bool T>
-THashTableBase<K,V,T>::THashTableBase( Scope& a, uint capacity )
+template<class K, bool T>
+THashSetBase<K,T>::THashSetBase( Scope& a, uint capacity )
 	: freeHead(0)
 	, numBuckets((capacity * 15 + 5) / 10)
 	, capacity(capacity)
 	, bucketHeads(eiAllocArray(a, u32, numBuckets))
 	, keyList(eiAllocArray(a, Node, capacity))
-	, valueList(eiAllocArray(a, V, capacity))
 {
 	Init(capacity);
 }
 
-template<class K, class V, bool T>
-void THashTableBase<K,V,T>::Init(uint capacity)
+template<class K, bool T>
+void THashSetBase<K,T>::Init(uint capacity)
 {
 	eiASSERT( numBuckets != 0 );
 	memset(bucketHeads, 0, sizeof(u32)*numBuckets);
 	memset(keyList,     0, sizeof(Node)*capacity);
-	memset(valueList,   0, sizeof(V)*capacity);
 	Next terminal = { {-1, 0} };//terminate the linked list
 	keyList[capacity-1].offsNextMinusOne = terminal;
 }
 
-template<class K, class V, bool T>
-int THashTableBase<K,V,T>::FindKeyInBucketChain( const K& k, int startNode )
+template<class K, bool T>
+int THashSetBase<K,T>::FindKeyInBucketChain( const K& k, int startNode )
 {
 	Node* node;
 	eiASSERT( startNode >= 0 && startNode < (int)capacity );
@@ -65,8 +64,8 @@ int THashTableBase<K,V,T>::FindKeyInBucketChain( const K& k, int startNode )
 	return -1;
 }
 
-template<class K, class V, bool T>
-bool THashTableBase<K,V,T>::Find( const K& k, int& index )
+template<class K, bool T>
+bool THashSetBase<K,T>::Find( const K& k, int& index )
 {
 	H hash = NativeHash<K>::Hash(k);
 	uint bucket = hash % numBuckets;
@@ -86,8 +85,8 @@ bool THashTableBase<K,V,T>::Find( const K& k, int& index )
 	return false;
 }
 
-template<class K, class V, bool T>
-bool THashTableBase<K,V,T>::Insert( const K& k, int& index )
+template<class K, bool T>
+bool THashSetBase<K,T>::Insert( const K& k, int& index )
 {
 	H hash = NativeHash<K>::Hash(k);
 	uint bucket = hash % numBuckets;
@@ -154,3 +153,22 @@ bool THashTableBase<K,V,T>::Insert( const K& k, int& index )
 	index = allocation;
 	return true;
 }
+
+//------------------------------------------------------------------------------
+
+template<class K, class V, bool T>
+THashTableBase<K, V, T>::THashTableBase(Scope& a, uint capacity, uint numBuckets)
+	: THashSetBase(a, capacity, numBuckets)
+	, valueList(eiAllocArray(a, V, capacity))
+{
+	memset(valueList, 0, sizeof(V)*capacity);
+}
+
+template<class K, class V, bool T>
+THashTableBase<K, V, T>::THashTableBase(Scope& a, uint capacity)
+	: THashSetBase(a, capacity)
+	, valueList(eiAllocArray(a, V, capacity))
+{
+	memset(valueList, 0, sizeof(V)*capacity);
+}
+

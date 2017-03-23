@@ -8,9 +8,9 @@
 using namespace eight;
 
 Nil eight::internal::_ei_this_section;
-Nil eight::internal::_ei_semaphore_lock;
+Nil eight::internal::_ei_tasklist_lock;
 ThreadLocalStatic<internal::ThreadId, internal::Tag_ThreadId> eight::internal::_ei_thread_id;
-ThreadLocalStatic<TaskDistribution, internal::Tag_TaskDistribution> eight::internal::_ei_task_distribution;
+//ThreadLocalStatic<TaskDistribution, internal::Tag_TaskDistribution> eight::internal::_ei_task_distribution;
 
 inline TaskDistribution EnterTaskSection_Impl( u32 workersUsed, const internal::ThreadId& thread)
 {
@@ -33,7 +33,7 @@ inline TaskDistribution EnterTaskSection_Impl( u32 workersUsed, const internal::
 
 TaskDistribution eight::internal::EnterTaskSection( const TaskSection& task, const ThreadId& thread, TaskSectionNoLock& lock )
 {
-	eiASSERT( task.IsSemaphore() == false && task.IsMask() == false );
+	eiASSERT( task.IsTaskList() == false && task.IsMask() == false );
 	eiASSERT( 0 == (thread.mask & task.workersDone) );
 	TaskDistribution work =  EnterTaskSection_Impl( task.WorkersUsed(), thread );
 	lock.Entered( task, work.thisWorker != -1 );
@@ -42,7 +42,7 @@ TaskDistribution eight::internal::EnterTaskSection( const TaskSection& task, con
 
 TaskDistribution eight::internal::EnterTaskSectionMultiple( const TaskSection& task, const ThreadId& thread, TaskSectionNoLock& lock )
 {
-	eiASSERT( task.IsSemaphore() == false && task.IsMask() == false );
+	eiASSERT( task.IsTaskList() == false && task.IsMask() == false );
 	TaskDistribution work = EnterTaskSection_Impl( task.WorkersUsed(), thread );
 	if( thread.mask & task.workersDone )
 		work.thisWorker = -1;
@@ -69,38 +69,9 @@ TaskDistribution eight::internal::EnterTaskSectionMask( const ThreadMask& task, 
 	return work;
 }
 
-TaskDistribution eight::internal::EnterTaskSectionSemaphore( Semaphore& task, const ThreadId& thread, TaskSectionLock& lock )
-{
-	eiASSERT( task.IsSemaphore() == true && task.IsMask() == false );
-	
-	TaskDistribution work;
-	work.numWorkers = task.WorkersUsed();
-
-	//if limit not reached, increment and lock high bit
-	s32 value;
-	do {
-		value = task.workersDone;
-		value &= ~0x20000000;
-		if( value >= work.numWorkers )
-		{
-			value = -1;//use -1 when all worker locks exhausted
-			eiInfo(TaskSection, "%d - Pass - EnterTaskSectionSemaphore\n", internal::_ei_thread_id->index );
-			goto nolock;
-		}
-	} while( !task.workersDone.SetIfEqual( (value+1) | 0x20000000, value ) );
-	lock.Lock(task);
-	eiInfo(TaskSection, "%d - Lock - EnterTaskSectionSemaphore\n", internal::_ei_thread_id->index );
-nolock:
-
-	work.thisWorker = value;
-	work.threadIndex = thread.index;
-	work.poolSize = thread.poolSize;
-	return work;
-}
-
 void eight::internal::ExitTaskSection( TaskSection& task, const TaskDistribution& work, const ThreadId& thread )
 {
-	eiASSERT( !task.IsSemaphore() && !task.IsMask() );
+	eiASSERT( !task.IsTaskList() && !task.IsMask() );
 	eiASSERT( work.thisWorker >= 0 );
 	eiASSERT( work.numWorkers >  0 );
 	u32 localDone, newDoneValue;
@@ -122,21 +93,56 @@ void eight::internal::ExitTaskSectionMask()
 	WriteBarrier();
 }
 
-void eight::internal::ExitTaskSectionSemaphore( Semaphore& task, const TaskDistribution& work, const ThreadId& thread )
+TaskDistribution eight::internal::EnterTaskSectionTaskList( TaskList& task, const ThreadId& thread, TaskSectionLock& lock )
 {
-	eiInfo(TaskSection, "%d - Exit - EnterTaskSectionSemaphore\n", internal::_ei_thread_id->index );
-	eiASSERT( task.IsSemaphore() && !task.IsMask() );
+	eiASSERT( task.IsTaskList() == true && task.IsMask() == false );
+	
+	TaskDistribution work;
+	work.numWorkers = task.WorkersUsed();
+	eiASSERT( work.numWorkers <= 0xFFFF ); //not enough bits here
+
+	//if limit not reached, increment and lock high bit
+	s32 value, newValue;
+	do {
+		value = task.workersDone;
+		if( (value & 0xFFFF) >= work.numWorkers )
+		{
+			value = -1;//use -1 when all worker locks exhausted
+			eiInfo(TaskSection, "%d - Pass - EnterTaskSectionTaskList\n", internal::_ei_thread_id->index );
+			goto nolock;
+		}
+		newValue = value + 1;
+		if( value == 0 )//first worker initialize a completion countdown in the high bits
+			newValue |= work.numWorkers << 16;
+	} while( !task.workersDone.SetIfEqual( newValue, value ) );
+	lock.Lock(task);
+	eiInfo(TaskSection, "%d - Lock - EnterTaskSectionTaskList\n", internal::_ei_thread_id->index );
+	
+	value &= 0xFFFF;
+	eiASSERT( value < work.numWorkers );
+nolock:
+	
+	work.thisWorker = value;
+	work.threadIndex = thread.index;
+	work.poolSize = thread.poolSize;
+	return work;
+}
+
+void eight::internal::ExitTaskSectionTaskList( TaskList& task, const TaskDistribution& work, const ThreadId& thread )
+{
+	eiInfo(TaskSection, "%d - Exit - EnterTaskSectionTaskList\n", internal::_ei_thread_id->index );
+	eiASSERT( task.IsTaskList() && !task.IsMask() );
 	eiASSERT( work.thisWorker >= 0 );
 	eiASSERT( work.numWorkers >  0 );
-	s32 value = task.workersDone;
-	s32 newValue = value & ~0x20000000;
-	eiASSERT( (value & 0x20000000) );
-	if( false eiDEBUG(||true) )
-	{
-		eiASSERT( task.workersDone.SetIfEqual( newValue, value ) );
-	}
-	else
-		task.workersDone = newValue;
+	eiASSERT( work.thisWorker < work.numWorkers );
+	
+	s32 value, newValue;
+	do {
+		value = task.workersDone;
+		u32 counter = value & 0xffff0000U;
+		newValue = (value & ~0xffff0000U) | (counter - 0x10000);
+		eiASSERT( counter && newValue < value && (newValue&0xffff)==(value&0xffff) );
+	} while( !task.workersDone.SetIfEqual( newValue, value ) );
 
 #if defined(eiBUILD_USE_TASK_WAKE_EVENTS)
 	if( task.WorkersUsed() == newValue )
@@ -149,7 +155,7 @@ void eight::internal::ExitTaskSectionSemaphore( Semaphore& task, const TaskDistr
 class task_section_wait_after_pool_exit : public std::exception {};
 #endif
 
-bool eight::internal::IsTaskSectionDone(const Semaphore& task)
+bool eight::internal::IsTaskSectionDone(const TaskList& task)
 {
 	return IsTaskSectionDone(reinterpret_cast<const TaskSection&>(task));
 }
@@ -170,9 +176,9 @@ bool eight::internal::IsTaskSectionDone(const SectionBlob& blob)
 			const TaskSection& section = reinterpret_cast<const TaskSection&>(blob);
 			return IsTaskSectionDone(section);
 		}
-	case TaskSectionType::Semaphore:
+	case TaskSectionType::TaskList:
 		{
-			const Semaphore& section = reinterpret_cast<const Semaphore&>(blob);
+			const TaskList& section = reinterpret_cast<const TaskList&>(blob);
 			return IsTaskSectionDone(section);
 		}
 	case TaskSectionType::ThreadMask:
@@ -187,7 +193,7 @@ void eight::internal::ResetTaskSection(SectionBlob& task)
 	TaskSection& self = *reinterpret_cast<TaskSection*>(&task);
 	ResetTaskSection(self);
 }
-void eight::internal::ResetTaskSection(Semaphore& task)
+void eight::internal::ResetTaskSection(TaskList& task)
 {
 	TaskSection& self = *reinterpret_cast<TaskSection*>(&task);
 	ResetTaskSection(self);
@@ -209,17 +215,18 @@ TaskSection::TaskSection( const ThreadMask& thread )
 	workersDone = 0;
 	workersUsed = ((const TaskSection&)thread).WorkersUsed();
 }
-TaskSection::TaskSection( s32 workerMask, bool semaphore, bool mask )
+TaskSection::TaskSection( s32 workerMask, bool taskList, bool mask )
 {
 	workersDone = 0;
 	//TODO - assert workerMask is valid?
-	s32 flags = (semaphore ? TaskSectionType::Semaphore  : 0)
-	          | (mask      ? TaskSectionType::ThreadMask : 0);
+	s32 flags = (taskList ? TaskSectionType::TaskList   : 0)
+	          | (mask     ? TaskSectionType::ThreadMask : 0);
 	workersUsed = workerMask | (flags << 30);
 }
 
-Semaphore::Semaphore( int maxThreads ) : TaskSection( min( (u32)maxThreads, internal::_ei_thread_id->poolSize ), true, false )
+TaskList::TaskList( int workCount ) : TaskSection( (u32)workCount, true, false )
 {
+	eiASSERT( workCount >= 0 );
 }
 
 inline s32 ValidateThreadMask( s32 mask )
@@ -246,10 +253,10 @@ ThreadMask::ThreadMask( const ThreadMask& thread )
 	: TaskSection( thread.WorkerMask(), false, true )
 {
 }
-ThreadMask::ThreadMask( s32 workersUsed, bool semaphore, bool mask )
-	: TaskSection( workersUsed, semaphore, mask )
+ThreadMask::ThreadMask( s32 workersUsed, bool taskList, bool mask )
+	: TaskSection( workersUsed, taskList, mask )
 {
-	eiASSERT( !semaphore && mask );
+	eiASSERT( !taskList && mask );
 }
 
 SingleThread::SingleThread( int threadIndex )
@@ -322,13 +329,13 @@ void TaskSection::Init(int a_numThreads, u32 threadMask)
 
 
 s32  TaskSection::WorkersUsed() const { return workersUsed & ~(0x3<<30); }
-bool TaskSection::IsSemaphore() const { return 0!=(TaskSectionType::Semaphore  & (int(workersUsed) >> 30)); }
+bool TaskSection::IsTaskList() const { return 0!=(TaskSectionType::TaskList  & (int(workersUsed) >> 30)); }
 bool TaskSection::IsMask     () const { return 0!=(TaskSectionType::ThreadMask & (int(workersUsed) >> 30)); }
 
 TaskSectionType::Type SectionBlob::Type() const
 {
 	const TaskSection& self = *reinterpret_cast<const TaskSection*>(this);
-	int type = self.workersUsed >> 30;
+	int type = ((u32)self.workersUsed) >> 30;
 	return (TaskSectionType::Type)type;
 }
 
@@ -360,7 +367,7 @@ bool eight::internal::IsInTaskSection(const TaskSection& task)
 	return base && base->section == &task;
 #endif
 }
-bool eight::internal::IsInTaskSection(const Semaphore& task)
+bool eight::internal::IsInTaskSection(const TaskList& task)
 {
 #if defined(eiBUILD_RETAIL)
 	return true;
@@ -389,9 +396,9 @@ bool eight::internal::IsInTaskSection(const SectionBlob& blob)
 			const TaskSection& section = reinterpret_cast<const TaskSection&>(blob);
 			return IsInTaskSection(section);
 		}
-	case TaskSectionType::Semaphore:
+	case TaskSectionType::TaskList:
 		{
-			const Semaphore& section = reinterpret_cast<const Semaphore&>(blob);
+			const TaskList& section = reinterpret_cast<const TaskList&>(blob);
 			return IsInTaskSection(section);
 		}
 	case TaskSectionType::ThreadMask:

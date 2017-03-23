@@ -115,7 +115,7 @@ public:
 		if( result == WAIT_FAILED )
 		{
 			result = GetLastError();
-			void* errText = 0;
+			char* errText = 0;
 			DWORD errLength = FormatMessage( FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, 0, result, MAKELANGID( LANG_NEUTRAL, SUBLANG_DEFAULT ), (LPTSTR)&errText, 0, 0 );
 			printf("%s\n", errText);
 			LocalFree( errText );

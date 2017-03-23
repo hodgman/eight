@@ -13,7 +13,7 @@
 namespace eight {
 //------------------------------------------------------------------------------
 
-typedef void (FnTask)( void* o, void* b, uint size );
+typedef void (FnTask)( void* o, void* b );
 
 struct TaskProto
 {
@@ -21,6 +21,7 @@ struct TaskProto
 	void*   blob;
 	uint    blobSize;
 	void*   user;
+	const char* tag;
 	Address<u8> outBlobAddress;//written to during compilation
 };
 
@@ -51,6 +52,7 @@ struct Task
 	void*      user;
 	Offset<u8> blob;
 	uint       blobSize;
+	const char* tag;
 };
 
 struct TaskGroup : public VariableSize

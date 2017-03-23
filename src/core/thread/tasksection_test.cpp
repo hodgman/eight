@@ -14,7 +14,7 @@ using namespace eight;
 
 //todo - cleanup
 extern ProfileCallback g_JsonProfileOut;
-extern int g_profilersRunning;
+extern Atomic g_profilersRunning;
 extern int g_profileFramesLeft;
 
 namespace
@@ -40,7 +40,7 @@ namespace
 		TestTasks() : task1(), task2(), criticalTask( s_workers*2 ) {}
 		TaskSection task1;
 		TaskSection task2;
-		Semaphore criticalTask;
+		TaskList criticalTask;
 	};
 
 	struct TaskTestContext
@@ -99,7 +99,7 @@ namespace
 					for( int i=0; i!=items; ++i )
 					{
 						float a = 1;
-						for( int j=0; j!=fakeWork; ++j ) { a = (sqrt( a*i+j+1 ) - a+(3.25f+a)+a*24.1131f+a)*0.001f; }
+						for( int j=0; j!=fakeWork; ++j ) { a = (sqrtf( a*i+j+1 ) - a+(3.25f+a)+a*24.1131f+a)*0.001f; }
 						//eiRASSERT( data.results[items*0 + i] == 0 );
 						data.results[items*0 + i] = int( 1 + (a/(a+1))*0.000001 )*9000;
 					}
@@ -149,12 +149,12 @@ namespace
 				for( int i=begin; i!=end; ++i )
 				{
 					float a = 1;
-					for( int j=0; j!=fakeWork; ++j ) { a = (sqrt( a*i+j+1 ) - a+(3.25f+a)+a*24.1131f+a)*0.001f; }
+					for( int j=0; j!=fakeWork; ++j ) { a = (sqrtf( a*i+j+1 ) - a+(3.25f+a)+a*24.1131f+a)*0.001f; }
 				//	eiRASSERT( data.results[items*0 + i] == 0 );
 					data.results[items*0 + i] = int( 1 + (a/(a+1))*0.000001 );
 				}
 
-				eiBeginSectionSemaphore( data.tasks->criticalTask );
+				eiBeginSectionTaskList( data.tasks->criticalTask );
 				{
 					eiProfile( "data.tasks->criticalTask" );
 					data.criticalData[data.criticalCount++] = threadIndex;
@@ -169,7 +169,7 @@ namespace
 					for( int i=begin; i!=end; ++i )
 					{
 						float a = 2;
-						for( int j=0; j!=fakeWork; ++j ) { a = (sqrt( a*i+j+1 ) - a+(3.25f+a)+a*24.1131f+a)*0.001f; }
+						for( int j=0; j!=fakeWork; ++j ) { a = (sqrtf( a*i+j+1 ) - a+(3.25f+a)+a*24.1131f+a)*0.001f; }
 					//	eiRASSERT( data.results[items*1 + i] == 0 );
 						data.results[items*1 + i] = int( 2 + (a/(a+1))*0.000001 );
 					}
@@ -178,7 +178,7 @@ namespace
 			}
 			eiEndSection( data.tasks->task1 );
 
-			eiBeginSectionSemaphore( data.tasks->criticalTask );
+			eiBeginSectionTaskList( data.tasks->criticalTask );
 			{
 				eiProfile( "data.tasks->criticalTask" );
 				data.criticalData[data.criticalCount++] = threadIndex;
