@@ -8,7 +8,7 @@
 
 #include "lua.h"
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && _MSC_VER < 1900
 /* MSVC is stuck in the last century and doesn't have C99's stdint.h. */
 typedef __int8 int8_t;
 typedef __int16 int16_t;
@@ -243,8 +243,13 @@ static LJ_AINLINE uint32_t lj_getu32(const void *p)
 #endif
 
 #ifndef BitScanForward
+#if _MSC_VER < 1600
 unsigned char _BitScanForward(uint32_t *, unsigned long);
 unsigned char _BitScanReverse(uint32_t *, unsigned long);
+#else
+#define BitScanForward _BitScanForward
+#define BitScanReverse _BitScanReverse
+#endif
 #endif
 unsigned long _byteswap_ulong(unsigned long);
 uint64_t _byteswap_uint64(uint64_t);

@@ -340,7 +340,7 @@ LUA_API int lua_gethookcount(lua_State *L)
 }
 
 /* Call a hook. */
-static void callhook(lua_State *L, int event, BCLine line)
+void callhook(lua_State *L, int event, BCLine line)
 {
   global_State *g = G(L);
   lua_Hook hookf = g->hookf;

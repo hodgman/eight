@@ -11,7 +11,7 @@
 @rem
 @rem Then cd to this directory and run this script.
 
-@if not defined INCLUDE goto :FAIL
+REM @if not defined INCLUDE goto :FAIL
 
 @setlocal
 @set LJCOMPILE=cl /nologo /c /MT /Ob2 /O2 /W3 /D_CRT_SECURE_NO_DEPRECATE

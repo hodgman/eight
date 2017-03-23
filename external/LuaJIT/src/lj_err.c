@@ -542,8 +542,10 @@ static ptrdiff_t finderrfunc(lua_State *L)
 }
 
 /* Runtime error. */
+void callhook(lua_State *L, int event, BCLine line);
 LJ_NOINLINE void lj_err_run(lua_State *L)
 {
+	global_State *g = G(L);
   ptrdiff_t ef = finderrfunc(L);
   if (ef) {
     TValue *errfunc = restorestack(L, ef);
@@ -558,6 +560,10 @@ LJ_NOINLINE void lj_err_run(lua_State *L)
     copyTV(L, top-1, errfunc);
     L->top = top+1;
     lj_vm_call(L, top, 1+1);  /* Stack: |errfunc|msg| -> |msg| */
+  }
+
+  if ((g->hookmask & LUA_MASKLINE)) {
+    callhook(L, LUA_HOOKERROR, -1);
   }
   lj_err_throw(L, LUA_ERRRUN);
 }
