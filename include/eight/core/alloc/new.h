@@ -1,7 +1,24 @@
 #pragma once
 #include <new>
 #include "eight/core/types.h"
+#include "eight/core/debug.h"
 namespace eight {
+
+struct TagInterface;
+template<class T> class Interface;
+
+template<class T, bool IsInterface> struct InterfaceCast
+{
+	typedef Interface<T> Type;
+};
+template<class T> struct InterfaceCast<T,false>
+{
+	typedef T Type;
+};
+template<class T> typename InterfaceCast<T, std::is_base_of<TagInterface,T>::value>::Type* InterfacePointer( T* ptr )
+{
+	return (typename InterfaceCast<T, std::is_base_of<TagInterface,T>::value>::Type*)(ptr);
+}
 //------------------------------------------------------------------------------
 /*
 	Engine-specific alternatives to new and malloc are provided.
@@ -26,8 +43,9 @@ namespace eight {
 #define eiAllocArray(   alloc, type, n )    ((type*)(alloc).Alloc<type>(n))
 #define eiNewInterface( alloc, type )  new(eight::InterfaceAlloc<type>(alloc)) type
 
-#define eiDelete( alloc, a ) alloc.Delete(a)
-#define eiFree(   alloc, a ) alloc.Free(a)
+#define eiDelete(      alloc, a )       (alloc).Delete(InterfacePointer(a))
+#define eiDeleteArray( alloc, a, size ) (alloc).DeleteArray(a, size)
+#define eiFree(        alloc, a )       (alloc).Free(a)
 
 struct ei_GlobalHeap
 {
@@ -35,6 +53,9 @@ struct ei_GlobalHeap
 	template<class T> static T* New( uint count );                 //   c,    d
 	template<class T> static T* Alloc();                           //no c, no d
 	template<class T> static T* Alloc( uint count );               //no c, no d
+	                  static u8* Alloc( uint bytes );            
+	template<class T> static void Delete(Interface<T>*);
+	template<class T> static void DeleteArray(T*, uint size);
 	template<class T> static void Delete(T*);
 	static void Free(void*);
 	
@@ -55,7 +76,7 @@ eiNoDestructor(unsigned int);
 
 //TODO - move
 const static ei_GlobalHeap GlobalHeap;
-void* Malloc( uint size );
+void* Malloc( size_t size );
 void  Free( void* );
 template<class T> T* ei_GlobalHeap::New()                          //no c,    d
 {
@@ -78,8 +99,31 @@ template<class T> T* ei_GlobalHeap::Alloc( uint count )               //no c, no
 {
 	return (T*)Malloc(sizeof(T)*count);
 }
+inline u8* ei_GlobalHeap::Alloc( uint bytes )
+{
+	return (u8*)Malloc(bytes);
+}           
+template<class T> void ei_GlobalHeap::Delete(Interface<T>* ptr)
+{
+	if( !ptr )
+		return;
+	Interface<T>::Instance_Destruct(ptr);
+	eight::Free(ptr);
+}
+template<class T> void ei_GlobalHeap::DeleteArray(T* ptr, uint size)
+{
+	eiSTATIC_ASSERT(!(std::is_base_of<TagInterface,T>::value));
+	if( !ptr )
+		return;
+	for( uint i=size; i-->0; )
+		ptr[i].~T();
+	eight::Free(ptr);
+}
 template<class T> void ei_GlobalHeap::Delete(T* ptr)
 {
+	eiSTATIC_ASSERT(!(std::is_base_of<TagInterface,T>::value));
+	if( !ptr )
+		return;
 	ptr->~T();
 	eight::Free(ptr);
 }

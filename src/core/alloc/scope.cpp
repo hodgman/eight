@@ -52,13 +52,17 @@ void Scope::FreeOverflowChain()
 	}
 }
 
-void Scope::OnOutOfMemory( uint required )
+void Scope::OnOutOfMemory( size_t required )
 {
-	uint size = capacity;//grow by 2x
+	eiASSERT( required < 0xFFFFFFFFU );
+	size_t size = capacity;//grow by 2x
 	size = size > required ? size : required;//or if that's not big enough, grow by the current request
+	if( size > 0xFFFFFFFFU )
+		size = 0xFFFFFFFFU;
+	eiASSERT( (capacity+size) > capacity );
 	capacity += size;
 	eiASSERT( capacity >= size );
-	u8* heap = eiAllocArray(GlobalHeap, u8, size);
+	u8* heap = eiAllocArray(GlobalHeap, u8, (uint)size);
 	overflowChain = eiNew(GlobalHeap,OverflowNode)( overflowChain, heap, size );
 	alloc = &overflowChain->alloc;
 	alloc->TransferOwnership(0,this);
@@ -74,7 +78,7 @@ bool Scope::Sealed() const
 	return alloc->Owner() != this;
 }
 
-u8* Scope::Alloc( uint size, uint align )
+u8* Scope::Alloc( size_t size, uint align )
 {
 	eiASSERT( !Sealed() );
 	align = align ? align : 16;
@@ -93,30 +97,19 @@ u8* Scope::Alloc( uint size, uint align )
 void Scope::OnUnwind( void* object, FnDestructor* fn )
 {
 	eiASSERT( fn );
-	AddDestructor( Alloc<Destructor>(), (u8*)object, fn );
+	AddDestructor( Alloc<Destructor>(), (u8*)object, fn, 0 );
+}
+void Scope::OnUnwind( void* object, FnDestructor* fn, u32 sizeInBytes )
+{
+	eiASSERT( fn );
+	AddDestructor( Alloc<Destructor>(), (u8*)object, fn, sizeInBytes );
 }
 
-void Scope::AddDestructor( Destructor* d, u8* object, FnDestructor* fn )
+void Scope::AddDestructor( Destructor* d, u8* object, FnDestructor* fn, u32 sizeInBytes )
 {
 	d->fn = fn;
 	d->object = object;
 	d->next = destructList;
+	d->size = sizeInBytes;
 	destructList = d;
-}
-
-void Scope::AddDestructors( Destructor* destructors, u8* objects, uint count, uint size, FnDestructor* fn )
-{
-	eiASSERT(fn);
-	eiASSERT(destructors);
-	eiASSERT(objects);
-	Destructor* head = destructList;
-	for( int i=0; i != count; ++i )
-	{
-		destructors[i].fn = fn;
-		destructors[i].object = objects;
-		destructors[i].next = head;
-		head = destructors + i;
-		objects += size;
-	}
-	destructList = head;
 }

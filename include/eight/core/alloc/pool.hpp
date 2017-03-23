@@ -72,7 +72,7 @@ int PoolBase<Enumerable>::Alloc()
 	{
 		eiASSERT( (*(u32*)&m_usedLinks[index]) == 0xFFFFFFFF );
 		eiASSERT( m_used == -1 || (m_used>=0 && (uint)m_used<m_size) );
-		Link l = { 0xFFFF, m_used>=0 ? (u16)m_used : 0xFFFF };
+		Link l = { 0xFFFFU, m_used>=0 ? (u16)m_used : 0xFFFFU };
 		m_usedLinks[index] = l;
 		if( m_used != -1 )
 		{
@@ -213,7 +213,7 @@ const T& Pool<T,E,POD>::operator[](uint i) const
 template<class T, bool E, bool POD>
 uint Pool<T,E,POD>::Index(const T& object)
 {
-	eiASSERT( &object >= m_data && &object < m_data+m_pool.Capactiy() );
+	eiASSERT( &object >= m_data && &object < m_data+m_pool.Capacity() );
 	ptrdiff_t index = &object-m_data;
 	return (u32)index;
 }
@@ -251,7 +251,7 @@ T* Pool<T,E,POD>::Alloc()
 template<class T, bool E, bool POD>
 void Pool<T,E,POD>::Release( T* object )
 {
-	int index = object-m_data;
+	int index = (int)(object-m_data);
 	m_pool.Release( index );
 	if( !POD )
 		object->~T();

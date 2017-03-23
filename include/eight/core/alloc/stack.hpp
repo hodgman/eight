@@ -3,7 +3,7 @@
 //                      : begin(), end(), cursor(), owner() {}
 inline StackAlloc::StackAlloc( void* begin, void* end )
                       : begin((u8*)begin), end((u8*)end), cursor((u8*)begin), owner() { eiASSERT(begin); }
-inline StackAlloc::StackAlloc( void* begin, uint size )
+inline StackAlloc::StackAlloc( void* begin, size_t size )
                       : begin((u8*)begin), end((u8*)begin+size), cursor((u8*)begin), owner() { eiASSERT(begin); }
 /*inline bool StackAlloc::Valid() const
 {
@@ -28,7 +28,7 @@ inline bool StackAlloc::Align( uint align )
 }
 //bool IsClear() const { return cursor == begin; }
 inline const u8* StackAlloc::Begin() const { return begin; }
-inline u8* StackAlloc::Alloc( u32 required, u32 reserve )
+inline u8* StackAlloc::Alloc( size_t required, size_t reserve )
 {
 	eiASSERT( reserve >= required );
 	if( cursor + reserve <= end )
@@ -41,7 +41,7 @@ inline u8* StackAlloc::Alloc( u32 required, u32 reserve )
 	}
 	return 0;
 }
-inline u8* StackAlloc::Alloc( u32 size )
+inline u8* StackAlloc::Alloc( size_t size )
 {
 	return Alloc( size, size );
 }
@@ -56,7 +56,7 @@ template<class T> inline T* StackAlloc::Alloc( u32 count )
 inline void StackAlloc::Unwind(const void* p)
 {
 	eiASSERT( p>=begin && p<end && p<=cursor );
-	eiDEBUG( uint bytes = cursor-(u8*)p );
+	eiDEBUG( size_t bytes = cursor-(u8*)p );
 	cursor = (u8*)p;
 	eiDEBUG( memset( cursor, 0xFEFEFEFE, bytes ) ); //-V575 Function receives an odd argument 
 }
@@ -75,19 +75,19 @@ inline void StackMeasure::Align( uint align )
 {
 	cursor = ((cursor + align-1) / align) * align;
 }
-inline u32 StackMeasure::Alloc( u32 size )
+inline size_t StackMeasure::Alloc( size_t size )
 {
-	u32 mark = cursor;
+	size_t mark = cursor;
 	cursor += size;
 	return mark;
 }
 template<class T>
-u32 StackMeasure::Alloc()
+size_t StackMeasure::Alloc()
 {
 	return Alloc( sizeof(T) );
 }
 template<class T>
-u32 StackMeasure::Alloc( u32 count )
+size_t StackMeasure::Alloc( u32 count )
 {
 	return Alloc( sizeof(T)*count );
 }

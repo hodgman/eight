@@ -21,7 +21,7 @@ public:
 	bool Empty() const;
 	int Begin();
 	int Next(uint index);
-	uint Capactiy() const { return m_size; }
+	uint Capacity() const { return m_size; }
 private:
 	struct Link { u16 prev, next; }; eiSTATIC_ASSERT( sizeof(Link) == sizeof(u32) );
 	const uint  m_size;
@@ -49,7 +49,7 @@ public:
 	void Release( T* object );
 	T*   Begin();
 	T*   Next(const T& object);
-	uint Capactiy() const { return m_pool.m_size; }
+	uint Capacity() const { return m_pool.Capacity(); }
 	bool IsIndexValid(u32 i) const { return m_pool.IsIndexValid(i); }
 private:
 	PoolBase<Enumerable> m_pool;

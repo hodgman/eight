@@ -19,7 +19,7 @@ public:
 	int Alloc();
 	void Release( int handle );
 	void Clear();
-	uint Capactiy() const { eiASSERT(m_pool.Capactiy()==m_data.Length()); return m_pool.Capactiy(); }
+	uint Capacity() const { eiASSERT(m_pool.Capacity()==m_data.Length()); return m_pool.Capacity(); }
 	uint Size()     const { return m_map.Size(); }
 private:
 	PoolBase<false> m_pool;

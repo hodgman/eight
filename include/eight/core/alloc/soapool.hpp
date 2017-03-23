@@ -71,6 +71,6 @@ void CompactSoaPool<T>::Release( int handle )
 template<class T>
 void CompactSoaPool<T>::Clear()
 {
-	m_map.Clear(Capactiy());
+	m_map.Clear(Capacity());
 	m_pool.Clear();
 }

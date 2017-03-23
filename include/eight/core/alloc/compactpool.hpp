@@ -92,7 +92,7 @@ void CompactPool<T>::Clear()
 		for( uint i=0, end=Size(); i!=end; ++i )
 			m_data[i].~T();
 	}
-	m_map.Clear(Capactiy());
+	m_map.Clear(Capacity());
 	m_pool.Clear();
 }
 

@@ -12,19 +12,19 @@ class StackAlloc : public NonCopyable
 public:
 	//StackAlloc();
 	StackAlloc( void* begin, void* end );
-	StackAlloc( void* begin, uint size );
+	StackAlloc( void* begin, size_t size );
 	//bool Valid() const;
 	void Clear();
 	//bool IsClear() const { return cursor == begin; }
 	bool Align( uint );
-	inline u8* Alloc( u32 required, u32 reserve );
-	inline           u8* Alloc( u32 size  );
+	inline u8* Alloc( size_t required, size_t reserve );
+	inline           u8* Alloc( size_t size );
 	template<class T> T* Alloc(           );
 	template<class T> T* Alloc( u32 count );
 	void Unwind(const void* p);
 	const u8* Mark() const;
 	const u8* Begin() const;
-	u32 Capacity() const { return end-begin; }
+	size_t Capacity() const { return (end-begin); }
 
 	void TransferOwnership(const void* from, const void* to) { eiASSERT(from==owner); owner=to; }
 	const void* Owner() const { return owner; }
@@ -41,12 +41,22 @@ public:
 	StackMeasure() : cursor() {}
 	                  void Clear();
 	                  void Align( uint );//assumes the base address will also be aligned to this value
-	inline            u32 Alloc( u32 size  );
-	template<class T> u32 Alloc(           );
-	template<class T> u32 Alloc( u32 count );
-	                  u32 Bytes() const { return cursor; }
+	inline            size_t Alloc( size_t size );
+	template<class T> size_t Alloc(           );
+	template<class T> size_t Alloc( u32 count );
+	                  size_t Bytes() const { return cursor; }
 private:
-	u32 cursor;
+	size_t cursor;
+};
+
+template<uint SIZE> struct LocalStack
+{
+	u8 buffer[SIZE];
+	StackAlloc stack;
+	LocalStack(const char* name=0)
+		: stack(buffer, SIZE)
+	{}
+	operator StackAlloc&() { return stack; }
 };
 
 //------------------------------------------------------------------------------

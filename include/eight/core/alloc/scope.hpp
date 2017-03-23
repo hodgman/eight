@@ -7,7 +7,10 @@ inline Scope& Scope::DestructorHelper::Owner() const
 }
 template<class T> void* Scope::New()
 {
-	return Alloc<T>();
+	void* newObject = Alloc<T>();
+	if( IsSameType<T,Scope>::value )
+		OnUnwind(newObject, &DestructorCallback<T>, sizeof(T));
+	return newObject;
 }
 template<class T> T* Scope::New( uint count )
 {
@@ -26,10 +29,10 @@ template<class T> T* Scope::New( uint count )
 			ArrayDestructor* d = Alloc<ArrayDestructor>();
 			d->count = count;
 			d->p = result;
-			OnUnwind( d, &ArrayDestructor::Callback<T> );
+			OnUnwind( d, &ArrayDestructor::Callback<T>, sizeof(T)*count );
 		}
 		else
-			OnUnwind( result, &DestructorCallback<T> );
+			OnUnwind( result, &DestructorCallback<T>, sizeof(T) );
 	}
 	return result;
 }
@@ -50,10 +53,10 @@ template<class T> T* Scope::New( uint count, const T& init )
 			ArrayDestructor* d = Alloc<ArrayDestructor>();
 			d->count = count;
 			d->p = result;
-			OnUnwind( d, &ArrayDestructor::Callback<T> );
+			OnUnwind( d, &ArrayDestructor::Callback<T>, sizeof(T)*count );
 		}
 		else
-			OnUnwind( result, &DestructorCallback<T> );
+			OnUnwind( result, &DestructorCallback<T>, sizeof(T) );
 	}
 	return result;
 }

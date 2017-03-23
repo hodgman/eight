@@ -1,6 +1,7 @@
 //------------------------------------------------------------------------------
 #pragma once
 #include <eight/core/alloc/pool.h>
+#include <eight/core/id.h>
 #include <eight/core/handlemap.h>
 namespace eight {
 //------------------------------------------------------------------------------
@@ -21,7 +22,7 @@ public:
 	      T* Begin()       { return m_data; }
 	const T* End()   const { return m_data+Size(); }
 	      T* End()         { return m_data+Size(); }
-	uint Capactiy()  const { return m_pool.Capactiy(); }
+	uint Capacity()  const { return m_pool.Capacity(); }
 	uint Size()      const { return m_map.Size(); }
 	void Clear();
 	template<class Fn> void ForEach(Fn& fn);
