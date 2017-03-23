@@ -21,25 +21,32 @@ private:
 	T value;
 };
 
+template<class T> struct HideIntCastWarnings { typedef T Type; };
+template<class T, class N> struct HideIntCastWarnings< PrimitiveWrap<T, N> > { typedef T Type; };
+
 //#ifndef eiBUILD_RETAIL
 # define eiTYPEDEF_ID( name )							\
 	struct tag_##name;									\
 	typedef PrimitiveWrap<uint,tag_##name> name;		//
 
 #define eiTYPEDEF_ID_U64( name )						\
-struct tag_##name;									\
+	struct tag_##name;									\
 	typedef PrimitiveWrap<u64,tag_##name> name;			//
 
 #define eiTYPEDEF_ID_U32( name )						\
-struct tag_##name;									\
+	struct tag_##name;									\
 	typedef PrimitiveWrap<u32,tag_##name> name;			//
 
 #define eiTYPEDEF_ID_U16( name )						\
-struct tag_##name;									\
+	struct tag_##name;									\
 	typedef PrimitiveWrap<u16,tag_##name> name;			//
 
+#define eiTYPEDEF_ID_U8( name )							\
+	struct tag_##name;									\
+	typedef PrimitiveWrap<u8,tag_##name> name;			//
+
 #define eiTYPEDEF_ID_PTR( name )						\
-struct tag_##name;									\
+	struct tag_##name;									\
 	typedef tag_##name* name;							//
 
 // #else

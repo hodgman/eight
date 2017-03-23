@@ -34,12 +34,20 @@ typedef void (*callback)(void*);
 typedef u8 sizeone[1];
 typedef u8 sizetwo[2];
 
-template <typename T, int N> uint eiArraySize(T(&)[N]) { return N; } //TODO - move
+//template <typename T, int N> uint eiArraySize(T(&)[N]) { return N; } //TODO - move
+
+template<uint N> struct Sizer { char elems[N]; };
+template<class Type, uint N> Sizer<N> ArraySize_( Type(&)[N] );
+
+#define eiArraySize( a ) sizeof( ArraySize_( a ).elems )
+
 
 struct Nil
 {
+	operator void() {}
 	bool operator==( const Nil& ) { return true; }
 };
+const static Nil nil;
 
 template<class T> struct Maybe
 {

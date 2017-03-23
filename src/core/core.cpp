@@ -7,6 +7,7 @@
 #include <eight/core/thread/fifo_mpmc.h>
 #include <eight/core/thread/futex.h>
 #include <eight/core/thread/threadlocal.h>
+#include <eight/core/math/arithmetic.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +17,16 @@
 #include <iostream>
 #include <vector>
 #include <stdlib.h>
+#include <rdestl/list.h>
+#include <rdestl/rde_string.h>
+
+//TODO
+#include <eight/core/os/win32.h>
+
+bool eight::MessageBoxRetry( const char* text, const char* title )
+{
+	return ::MessageBoxA(0, text, title, MB_RETRYCANCEL|MB_ICONWARNING) != IDCANCEL;
+}
 
 namespace eight { namespace internal { void OnThreadExitCleanup(); } }
 
@@ -94,17 +105,75 @@ bool eight::Assert( const char* e, int l, const char* f, const char* fn )
 	return IsDebuggerAttached();
 }
 
+#ifdef eiIN_MEMORY_LOG
+struct InMemoryLog
+{
+	InMemoryLog() : maxCapacity( 4096 ), size(0) {}
+	void Push( const rde::string& msg )
+	{
+		ScopeLock<Futex> l(lock);
+		messages.push_back(msg);
+		++size;
+		if( size >= maxCapacity )
+			messages.pop_front();
+	}
+	uint GetLogSize()
+	{
+		return min( size, maxCapacity );
+	}
+	void GetLogItem( uint idxBegin, uint idxEnd, void( *pfn )(uint, const char*, void*), void* user )
+	{
+		eiASSERT( idxBegin < GetLogSize() );
+		eiASSERT( idxEnd <= GetLogSize() );
+		eiASSERT( idxBegin <= idxEnd );
+		eiASSERT( pfn );
+		lock.Lock();
+		rde::list<rde::string>::iterator it = messages.begin();
+		for( uint i=0; i!=idxBegin; ++i )
+			++it;
+		for( uint i=idxBegin; i!=idxEnd; ++i, ++it )
+		{
+//#if eiDEBUG_LEVEL > 0
+			if( it == messages.end() )
+			{
+				lock.Unlock();
+			//	eiASSERT( false );
+				return;
+			}
+//#endif
+			pfn(i, it->c_str(), user);
+		}
+		lock.Unlock();
+	}
+private:
+	Futex lock;
+	const uint maxCapacity;
+	uint size;
+	rde::list<rde::string> messages;
+} g_log;
+uint eight::GetLogSize() { return g_log.GetLogSize(); }
+void eight::GetLogItems( uint idxBegin, uint idxEnd, void( *pfn )(uint, const char*, void*), void* user )  { g_log.GetLogItem( idxBegin, idxEnd, pfn, user ); }
+#endif
+
 static Futex futex;
 void eight::Print( const char* msg )
 {
-	printf("%s", msg);
+	printf( "%s", msg );
+#ifdef eiIN_MEMORY_LOG
+	g_log.Push( rde::string( msg ) );
+#endif
 }
 void eight::Printf( const char* fmt, ... )
 {
 	va_list	v;
 	va_start(v, fmt);
 	vprintf(fmt, v);
-	va_end(v);
+	va_end( v );
+#ifdef eiIN_MEMORY_LOG
+	//todo
+//	sprintf(0, fmt, )
+//	g_log.Push( rde::string( msg ) );
+#endif
 }
 
 struct DebugOutput_Tag{};
@@ -127,7 +196,7 @@ void eight::DebugOutput( const char* prefix, const char* fmt, ... )
 	if( !tlBuffer )
 		s_tlsBuffers = tlBuffer = new DebugOutput_Buffer;//todo - replace new/delete with hookable general allocator
 	char* buffer = tlBuffer->buffer;
-	int len = strlen(prefix);
+	int len = (int)strlen(prefix);
 	memcpy(buffer, prefix, len);
 	va_list	v;
 	va_start(v, fmt);

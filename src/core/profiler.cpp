@@ -77,6 +77,7 @@ ThreadLocalStatic<int, Profiler> Profiler::m_threadEnabled;
 void eight::InitProfiler(Scope& a, uint maxEvents)
 {
 	eiASSERT( Profiler::m_timer == 0 );
+	a.OnUnwind(0, [](void*){Profiler::m_timer = 0; Profiler::m_events = 0; eiASSERT(Profiler::m_enabled==0);});//todo - assertion fails if user quits while profiling.
 	Profiler::m_timer = eiNewInterface(a, Timer);
 	Profiler::m_events = eiNew(a, FifoMpmc<Profiler::Event>)( a, maxEvents );
 	Profiler::m_enabled = 0;

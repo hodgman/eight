@@ -41,7 +41,7 @@ struct TypeName
 	{
 		const char* begin=0, *end=0;
 		Get(begin, end);
-		uint length = end-begin;
+		uint length = (uint)(end-begin);
 		eiASSERT( length+1 <= bufLen );
 		memcpy(buf, begin, length);
 		buf[length] = 0;

@@ -77,7 +77,7 @@ void TestSort( int runs, int count, DataSource data, float& r8, float& r16, floa
 		double start;
 		start = g_t->Elapsed();
 		b.resize( a1.size() );
-		RadixSort( &a1[0], &b[0], a1.size() );
+		RadixSort( &a1[0], &b[0], (uint)a1.size() );
 		total1 = (float)(g_t->Elapsed()-start);
 /*
 		start = g_t->Elapsed();

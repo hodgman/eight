@@ -4,14 +4,13 @@
 namespace eight {
 //------------------------------------------------------------------------------
 
-u32 Fnv32a( const void* begin, const void* end );
-u32 Fnv32a( const char* text );
+//u32 Fnv32a( const void* begin, const void* end, u32 offsetBasis = 2166136261U );
+//u32 Fnv32a( const char* text, u32 offsetBasis = 2166136261U );
 
 
 
-inline u32 Fnv32a( const void* begin, const void* end )
+inline u32 Fnv32a( const void* begin, const void* end, u32 offsetBasis = 2166136261U )
 {
-    u32 offsetBasis = 2166136261;//magic salt
     u32 prime = 16777619;//magic prime 2^24+203
     u32 hash = offsetBasis;
     for( const u8* b=(u8*)begin; b != end; ++b )
@@ -21,13 +20,12 @@ inline u32 Fnv32a( const void* begin, const void* end )
     }
     return hash;
 }
-inline u32 Fnv32a( const void* begin, const size_t size )
+inline u32 Fnv32a( const void* begin, const size_t size, u32 offsetBasis = 2166136261U )
 {
-	return Fnv32a(begin, ((u8*)begin) + size);
+	return Fnv32a(begin, ((u8*)begin) + size, offsetBasis);
 }
-inline u32 Fnv32a( const char* text )
+inline u32 Fnv32a( const char* text, u32 offsetBasis = 2166136261U )
 {
-    u32 offsetBasis = 2166136261;//magic salt
     u32 prime = 16777619;//magic prime 2^24+203
     u32 hash = offsetBasis;
 	if( text )
@@ -40,9 +38,9 @@ inline u32 Fnv32a( const char* text )
 	}
     return hash;
 }
-inline u16 Fnv16a( const char* text )
+inline u16 Fnv16a( const char* text, u32 offsetBasis = 2166136261U )
 {
-    u32 hash = Fnv32a(text);
+    u32 hash = Fnv32a(text, offsetBasis);
     hash ^= (hash >> 16);
     return (u16)(hash & 0xFFFF);
 }

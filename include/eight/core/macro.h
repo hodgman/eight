@@ -23,3 +23,11 @@
 #define eiOffsetOf(X, Y) offsetof(X, Y)
 
 #define eiAlignOf(T) __alignof(T)
+
+#ifdef eiBUILD_64BIT
+#define eiMAGIC_POINTER( bytePattern )	\
+	((void*)(ptrdiff_t(bytePattern&0xff) | (ptrdiff_t(bytePattern&0xff)<<8) | (ptrdiff_t(bytePattern&0xff)<<16) | ((bytePattern&0xff)<<24) | (ptrdiff_t(bytePattern&0xff)<<32) | (ptrdiff_t(bytePattern&0xff)<<40) | (ptrdiff_t(bytePattern&0xff)<<48) | (ptrdiff_t(bytePattern&0xff)<<56)))
+#else
+#define eiMAGIC_POINTER( bytePattern )	\
+	((void*)(ptrdiff_t(bytePattern&0xff) | (ptrdiff_t(bytePattern&0xff)<<8) | (ptrdiff_t(bytePattern&0xff)<<16) | (ptrdiff_t(bytePattern&0xff)<<24)))
+#endif

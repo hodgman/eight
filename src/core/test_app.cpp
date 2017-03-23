@@ -5,6 +5,9 @@
 #include <eight/core/alloc/scope.h>
 #include <eight/core/alloc/pool.h>
 #include <eight/core/timer/timer.h>
+#include <eight/core/thread/atomic.h>
+#include <eight/core/thread/hashtable.h>
+#include <eight/core/hash.h>
 #include <stdio.h>
 #include <deque>
 #include <list>
@@ -160,9 +163,185 @@ struct Scene
 	Camera* camera;
 };
 
+
+#include <map>
+#include <unordered_map>
+#include <string>
+#include <rdestl/hash_map.h>
+#include <rdestl/rde_string.h>
+
+
+static const char* words[] = 
+{
+	"fug",
+	"fugacities",
+	"fugacity",
+	"fugal",
+	"fugally",
+	"fugato",
+	"fugatos",
+	"fugged",
+	"fuggier",
+	"fuggiest",
+	"fugging",
+	"fuggy",
+	"fugio",
+	"fugios",
+	"fugitive",
+	"fugitively",
+	"fugitiveness",
+	"fugitives",
+	"fugle",
+	"fugled",
+	"fugleman",
+	"fuglemen",
+	"fugles",
+	"fugling",
+	"fugs",
+	"fugu",
+	"fugue",
+	"fugued",
+	"fugues",
+	"fuguing",
+	"fuguist",
+	"fuguists",
+	"fugus",
+	"fuhrer",
+	"fuhrers",
+	"fuji",
+	"fug",
+	"fugacities",
+	"fugacity",
+	"fugal",
+	"fugally",
+	"fugato",
+	"fugatos",
+	"fugged",
+	"fuggier",
+	"fuggiest",
+	"fugging",
+	"fuggy",
+	"fugio",
+	"fugios",
+	"fugitive",
+	"fugitively",
+	"fugitiveness",
+	"fugitives",
+	"fugle",
+	"fugled",
+	"fugleman",
+	"fuglemen",
+	"fugles",
+	"fugling",
+	"fugs",
+	"fugu",
+	"fugue",
+	"fugued",
+	"fugues",
+	"fuguing",
+	"fuguist",
+	"fuguists",
+	"fugus",
+	"fuhrer",
+	"fuhrers",
+	"fuji",
+};
+
+template<class String, class Map, class Clear> void TestMap( Map& map, Timer* timer, int test_size, const char* desc, Clear& clear )
+{
+	int sum = 0;
+	double a=0, b=0, c=0;
+	for( int i=0; i!=100; ++i )
+	{
+		ReadWriteBarrier();
+		double begin = timer->Elapsed();
+		ReadWriteBarrier();
+		for( int i=0; i!=test_size; ++i )
+		{
+			int word_index = i % eiArraySize(words);
+			map[String(words[word_index])] = i;
+		}
+		ReadWriteBarrier();
+		double middle = timer->Elapsed();
+		ReadWriteBarrier();
+		for( int i=0; i!=test_size; ++i )
+		{
+			int word_index = i % eiArraySize(words);
+			sum += map[String(words[word_index])];
+		}
+		ReadWriteBarrier();
+		double end = timer->Elapsed();
+		ReadWriteBarrier();
+
+		a += middle - begin;
+		b += end - middle;
+		c += end - begin;
+
+		clear();
+	}
+	printf("%s size %d, Write: %f ms, Read: %f ms. Total: %f. Result = %d\n", desc, test_size, a*100, b*100, c*100, sum);
+}
+
+
+struct String
+{
+	String(const char* string) : string(string), hash(Fnv32a(string)) {}
+	u32 hash;
+	const char* string;
+	bool operator==( const String& s )
+	{
+		return hash == s.hash && (0==strcmp(string,s.string));
+	}
+};
+template<> struct NativeHash<String>
+{
+	static u32 Hash(const String& s) { return s.hash; }
+	typedef u32 type;
+};
+template<> struct NativeHash<std::string>
+{
+	static u32 Hash(const std::string& s) { return Fnv32a(s.c_str()); }
+	typedef u32 type;
+};
+template<> struct NativeHash<const char*>
+{
+	static u32 Hash(const char* string) { return Fnv32a(string); }
+	typedef u32 type;
+};
+
+namespace rde
+{
+	hash_value_t extract_int_key_value(const std::string& t)
+	{
+		return (hash_value_t)Fnv32a(t.c_str());
+	}
+}
+
+template<class Key, class Value>
+struct VectorMap
+{
+	VectorMap(uint size) { nodes.reserve(size); }
+	struct Node { Node(const Key& k) :k(k){} Key k; Value v; };
+	std::vector<Node> nodes;
+
+	void clear() { nodes.clear(); }
+
+	Value& operator[]( const Key& k )
+	{
+		for( size_t i=0, end=nodes.size(); i!=end; ++i )
+		{
+			if( nodes[i].k == k )
+				return nodes[i].v;
+		}
+		nodes.emplace_back(k);
+		return nodes.back().v;
+	}
+};
+
 eiENTRY_POINT( test_main )
 int test_main( int argc, char** argv )
-{/*
+{
+	/*
 	const u32 W = 1280;
 	const u32 H = 720;
 	const u32 R = 128;
@@ -232,20 +411,65 @@ int test_main( int argc, char** argv )
 	Free(scratch);*/
 
 	InitCrashHandler();
+
+	
+//	{
+//		LocalScope<eiKiB(1)> a;
+//		Timer* timer = eiNewInterface(a, Timer)();
+//		for(int itrSample = 0; itrSample < 5; itrSample++)
+//		{
+//			int test_size = (int)pow(10,itrSample+1);
+//			{ std::map<          std::string, int> map;                 TestMap<std::string>( map, timer, test_size, "std::map            ", [&](){map.clear();} ); }
+//			{ std::unordered_map<std::string, int> map(test_size);      TestMap<std::string>( map, timer, test_size, "std::unordered_map  ", [&](){map.clear();} ); }
+//			{ VectorMap<         std::string, int> map(test_size);      TestMap<std::string>( map, timer, test_size, "VectorMap           ", [&](){map.clear();} ); }
+//			{ rde::hash_map<     std::string, int> map(test_size);      TestMap<std::string>( map, timer, test_size, "rde::hash_map       ", [&](){map.clear();} ); }
+//			{ HashTable<               void*, int> map( a, test_size ); TestMap<      void*>( map, timer, test_size, "eight::CheatTable   ", [&](){map.~    HashTable(); new(&map) HashTable<      void*, int>( a, test_size );} ); }
+//			{ HashTable<         const char*, int> map( a, test_size ); TestMap<const char*>( map, timer, test_size, "eight::HashTable1   ", [&](){map.~    HashTable(); new(&map) HashTable<const char*, int>( a, test_size );} ); }
+//			{ HashTable<              String, int> map( a, test_size ); TestMap<     String>( map, timer, test_size, "eight::HashTable2   ", [&](){map.~    HashTable(); new(&map) HashTable<     String, int>( a, test_size );} ); }
+//			{ HashTable<         std::string, int> map( a, test_size ); TestMap<std::string>( map, timer, test_size, "eight::HashTable3   ", [&](){map.~    HashTable(); new(&map) HashTable<     String, int>( a, test_size );} ); }
+//			{ MpmcHashTable<          String, int> map( a, test_size ); TestMap<     String>( map, timer, test_size, "eight::MpmcHashTable", [&](){map.~MpmcHashTable(); new(&map) MpmcHashTable< String, int>( a, test_size );} ); }
+//		/*	{
+//				ReadWriteBarrier();
+//				double begin = timer->Elapsed();
+//				ReadWriteBarrier();
+//				HashTable<const char*, int> map( a, test_size );
+//				for( int i=0; i!=test_size; ++i )
+//				{
+//					int word_index = i % eiArraySize(words);
+//					map[(words[word_index])] = i;
+//				}
+//				ReadWriteBarrier();
+//				double middle = timer->Elapsed();
+//				ReadWriteBarrier();
+//				int sum = 0;
+//				for( int i=0; i!=test_size; ++i )
+//				{
+//					int word_index = i % eiArraySize(words);
+//					sum += map[(words[word_index])];
+//				}
+//				ReadWriteBarrier();
+//				double end = timer->Elapsed();
+//				ReadWriteBarrier();
+//				printf("%s size %d, Write: %f ms, Read: %f ms. Result = %d\n", "eight::HashTable  ", test_size, float(middle - begin)*1000.0f, float(end - middle)*1000.0f, sum);
+//			}*/
+//			printf("\n");
+//		}
+//	}
 	
 	int errorCount = 0;
 //	eiRUN_TEST( Lua, errorCount );
 //	eiRUN_TEST( FluidSim, errorCount );
 //	eiRUN_TEST( SphereFrustum, errorCount );
-	eiRUN_TEST( Bind, errorCount );
+//	eiRUN_TEST( Bind, errorCount );
 	eiRUN_TEST( Message, errorCount );
-	eiRUN_TEST( FifoSpsc, errorCount );
-	eiRUN_TEST( FifoMpmc, errorCount );
-	eiRUN_TEST( TaskSection, errorCount );
+//	eiRUN_TEST( FifoSpsc, errorCount );
+//	eiRUN_TEST( FifoMpmc, errorCount );
+//	eiRUN_TEST( TaskSection, errorCount );
 //	eiRUN_TEST( TaskSchedule, errorCount );
 
 	return errorCount;
 }
+
 
 //------------------------------------------------------------------------------
 

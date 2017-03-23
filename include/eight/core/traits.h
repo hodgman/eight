@@ -33,6 +33,10 @@ template<class T> struct IsPointer           { const static bool value = false; 
 template<class T> struct IsPointer<      T*> { const static bool value = true;  };
 //template<class T> struct IsPointer<const T*> { const static bool value = true;  };
 
+template<class T> struct IsConstPointer           { const static bool value = false; };
+template<class T> struct IsConstPointer<      T*> { const static bool value = false;  };
+template<class T> struct IsConstPointer<const T*> { const static bool value = true;  };
+
 template<class T> struct IsReference           { const static bool value = false; };
 template<class T> struct IsReference<      T&> { const static bool value = true;  };
 //template<class T> struct IsReference<const T&> { const static bool value = true;  };
@@ -52,8 +56,8 @@ template<class T> struct StripRef<      T&> { typedef T Type; };
 template<class T> struct StripRef<const T&> { typedef T Type; };
 
 template<class T> struct RefToPointer           { typedef       T  Type; static       T& Deref(      T& t){return  t;} static const T& Deref(const T& t){return  t;} };
-template<class T> struct RefToPointer<      T&> { typedef       T* Type; static       T& Deref(      T* t){return *t;}};
-template<class T> struct RefToPointer<const T&> { typedef const T* Type; static const T& Deref(const T* t){return *t;}};
+template<class T> struct RefToPointer<      T&> { typedef       T* Type; static       T& Deref(      T* t){eiASSERTMSG(t, "Null reference"); return *t;}};
+template<class T> struct RefToPointer<const T&> { typedef const T* Type; static const T& Deref(const T* t){eiASSERTMSG(t, "Null reference"); return *t;}};
 
 template<class T> struct ConstRef           { typedef const T& Type; };
 template<class T> struct ConstRef<      T&> { typedef const T& Type; };

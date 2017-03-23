@@ -24,12 +24,19 @@ bool IsDebuggerAttached();
 //TODO - use the template based solution that gives better error messages
 #define eiSTATIC_ASSERT(exp) typedef int eiJOIN(assert_,__LINE__)[(exp) * 2 - 1];
 
+bool MessageBoxRetry( const char* text, const char* title );
 bool Assert( const char* e, int l, const char* f, const char* fn );
 void DebugOutput( const char* prefix, const char* fmt, ... );
 void DebugOutput( int line, const char* file, const char* function, const char* fmt, ... );
 void DebugOutput( int line, const char* file, const char* function, const char* fmt, va_list& );
 void Print( const char* msg );
 void Printf( const char* msg, ... );
+
+#define eiIN_MEMORY_LOG //todo
+#ifdef eiIN_MEMORY_LOG
+unsigned GetLogSize();
+void GetLogItems( unsigned idxBegin, unsigned idxEnd, void( *pfn )(unsigned, const char*, void*), void* );//do not print/assert/debugoutput/info/warn/error/etc inside this callback!
+#endif
 
 #define eiRASSERT( a )		do{ if(!(a)) { if( ::eight::Assert( #a, __LINE__, __FILE__, __FUNCTION__ ) ) {eiDEBUG_BREAK;} } }while(0)
 
@@ -57,7 +64,7 @@ void Printf( const char* msg, ... );
 	#ifdef eiBUILD_MSVC
 		#define eiASSUME( a ) __assume( a )
 	#else
-		#define eiASSUME( a ) do{}while(0) //no compiler hint available
+		#define eiASSUME( a ) eiNop //no compiler hint available
 	#endif
 	#define eiDEBUG_BREAK eiNop
 	#define eiASSERT( a ) eiNop
@@ -69,7 +76,7 @@ void Printf( const char* msg, ... );
 	#define eiInfoGroup(name, enabled)
 #endif
 
-#define eiASSERTMSG(a, fmt, ...) eiASSERT(a) //todo msg
+#define eiASSERTMSG(a, fmt, ...) eiASSERT(a);if(!(a)){eiError(fmt, __VA_ARGS__);} //todo - double evaluates condition. do it properly
 
 #define eiASSERT_ALIGN(addr, align) eiASSERT(((intptr_t)(addr) & ((align) - 1)) == 0)
 

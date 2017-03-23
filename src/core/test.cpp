@@ -110,6 +110,7 @@ bool eight::RunProtected( void(*pfn)() )
 
 void PrintStack( CONTEXT ctx )
 {
+#ifndef eiBUILD_64BIT
 	STACKFRAME64 sf = {};
 	sf.AddrPC.Offset    = ctx.Eip;
 	sf.AddrPC.Mode      = AddrModeFlat;
@@ -154,6 +155,7 @@ void PrintStack( CONTEXT ctx )
 
 		printf("\n");
 	}
+#endif
 }
 
 LONG WINAPI MiniDump_UnhandledExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
@@ -188,7 +190,7 @@ LONG WINAPI MiniDump_UnhandledExceptionFilter(struct _EXCEPTION_POINTERS* Except
 	else
 	{
 		DWORD error = GetLastError();
-		void* errText = 0;
+		char* errText = 0;
 		DWORD errLength = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, 0, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&errText, 0, 0);
 		printf( "Failed to save dump file to '%s' (error %x, %s)\n", "crash.dmp", error, errText );
 		LocalFree(errText); 

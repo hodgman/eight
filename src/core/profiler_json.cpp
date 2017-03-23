@@ -1,6 +1,7 @@
 
 #include <eight/core/profiler.h>
 #include <eight/core/debug.h>
+#include <eight/core/thread/atomic.h>
 
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/filestream.h"
@@ -13,7 +14,7 @@ using namespace rapidjson;
 static FILE* g_fp = 0;
 static FileStream* g_fs;
 static Writer<FileStream>* g_w;
-int g_profilersRunning = 0;
+Atomic g_profilersRunning;
 int g_profileFramesLeft = 0;
 
 #define STRING(x) String(x, sizeof(x)-1)
@@ -99,7 +100,7 @@ void RecordEvent( void*, int tid, int pid, const char* name, double time, Profil
 	}
 
 	w.StartObject();
-	w.STRING( "name" ); w.String( name, strlen( name ) );
+	w.STRING( "name" ); w.String( name, (uint)strlen( name ) );
 	//w.STRING( "cat" );  w.STRING( "GPU" );
 	w.STRING( "ph" );   w.String( phase, 1 );
 	w.STRING( "pid" );  w.Int( pid );

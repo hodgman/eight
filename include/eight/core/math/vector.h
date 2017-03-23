@@ -140,10 +140,10 @@ inline Vec4i operator<( const Vec4& a, const Vec4& b )//_mm_cmplt_ps
 {
 	Vec4i result = 
 	{{
-		a[0] < b[0] ? 0xFFFFFFFF : 0,
-		a[1] < b[1] ? 0xFFFFFFFF : 0,
-		a[2] < b[2] ? 0xFFFFFFFF : 0,
-		a[3] < b[3] ? 0xFFFFFFFF : 0,
+		a[0] < b[0] ? (int)0xFFFFFFFF : 0,
+		a[1] < b[1] ? (int)0xFFFFFFFF : 0,
+		a[2] < b[2] ? (int)0xFFFFFFFF : 0,
+		a[3] < b[3] ? (int)0xFFFFFFFF : 0,
 	}};
 	return result;
 }
@@ -151,10 +151,10 @@ inline Vec4i operator>( const Vec4& a, const Vec4& b )//
 {
 	Vec4i result = 
 	{{
-		a[0] > b[0] ? 0xFFFFFFFF : 0,
-		a[1] > b[1] ? 0xFFFFFFFF : 0,
-		a[2] > b[2] ? 0xFFFFFFFF : 0,
-		a[3] > b[3] ? 0xFFFFFFFF : 0,
+		a[0] > b[0] ? (int)0xFFFFFFFF : 0,
+		a[1] > b[1] ? (int)0xFFFFFFFF : 0,
+		a[2] > b[2] ? (int)0xFFFFFFFF : 0,
+		a[3] > b[3] ? (int)0xFFFFFFFF : 0,
 	}};
 	return result;
 }

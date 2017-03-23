@@ -182,14 +182,14 @@ inline u32 CountBitsSet_8bit( u32 i )
 	//TODO - CountBitsSet_14bit may actually be faster than this -- a few ALU instead of the cache miss?
 	static const unsigned char s_BitsSetTable256[256] = 
 	{
-#   define PA_B2(n) n,        n+1,        n+1,        n+2
-#   define PA_B4(n) PA_B2(n), PA_B2(n+1), PA_B2(n+1), PA_B2(n+2)
-#   define PA_B6(n) PA_B4(n), PA_B4(n+1), PA_B4(n+1), PA_B4(n+2)
-		            PA_B6(0), PA_B6(  1), PA_B6(  1), PA_B6(  2)
+#   define eiB2(n) n,        n+1,        n+1,        n+2
+#   define eiB4(n) eiB2(n), eiB2(n+1), eiB2(n+1), eiB2(n+2)
+#   define eiB6(n) eiB4(n), eiB4(n+1), eiB4(n+1), eiB4(n+2)
+		            eiB6(0), eiB6(  1), eiB6(  1), eiB6(  2)
 	};
-#undef PA_B6
-#undef PA_B4
-#undef PA_B2
+#undef eiB6
+#undef eiB4
+#undef eiB2
 	return s_BitsSetTable256[i];
 #else*/
 	return CountBitsSet_14bit(i);
@@ -299,7 +299,8 @@ eiFORCE_INLINE u32 MostSignificantBit( u64 value )
 	eiASSERT( value != 0 );
 #if defined(eiBUILD_WINDOWS) || defined(eiBUILD_XBONE)
 #if defined(eiBUILD_64BIT)
-	eiVERIFY( _BitScanReverse64( &result, value ) != 0 );
+	eiDEBUG( unsigned char retval = )_BitScanReverse64( &result, value );
+	eiASSERT( retval != 0 );
 # else
 	unsigned long resultHigh, resultLow;
 	unsigned char anyBitsHigh = _BitScanReverse( &resultHigh, u32((value>>32)&0xFFFFFFFF) );
@@ -389,6 +390,17 @@ eiFORCE_INLINE u32 BranchlessMin(u32 a, u32 b)
 	s32 signMask = diff >> 31;
 	s32 result = (s32)b + (diff & signMask);
 	return (u32)result;
+}
+
+eiFORCE_INLINE u32 KeepEverySecondBit(u64 key)
+{
+	key &= 0x5555555555555555;//throw out every second bit -- 0a0b0c0d0e0f0g0h0i0j0k0l0m0n0o0p0A0B0C0D0E0F0G0H0I0J0K0L0M0N0O0P
+	key = (key | (key >> 1)) & 0x3333333333333333;//          00ab00cd00ef00gh00ij00kl00mn00op00AB00CD00EF00GH00IJ00KL00MN00OP
+	key = (key | (key >> 2)) & 0x0f0f0f0f0f0f0f0f;//          0000abcd0000efgh0000ijkl0000mnop0000ABCD0000EFGH0000IJKL0000MNOP
+	key = (key | (key >> 4)) & 0x00ff00ff00ff00ff;//          00000000abcdefgh00000000ijklmnop00000000ABCDEFGH00000000IJKLMNOP
+	key = (key | (key >> 8)) & 0x0000ffff0000ffff;//          0000000000000000abcdefghijklmnop0000000000000000ABCDEFGHIJKLMNOP
+	key = (key | (key >>16)) & 0x00000000ffffffff;//          00000000000000000000000000000000abcdefghijklmnopABCDEFGHIJKLMNOP
+	return (u32)key;
 }
 
 //------------------------------------------------------------------------------
